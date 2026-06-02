@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.1
+
+- Fixed Windows CRLF formatting failures where comment safety could report false duplicate comments
+  such as `comment count changed: 6 -> 7`.
+- Kept CRLF line endings in formatted output while making parser/printer offsets agree internally.
+- Reduced noisy maybe-uninitialized diagnostics for member properties such as `obj.sprite`,
+  `dialoguebarUI.txt_num`, and other dotted GameMaker fields.
+- Added `tilemap_get_at_pixel` to generated GameMaker built-in knowledge.
+
 ## 0.10.0
 
 - Added beginner-friendly diagnostic explanations with titles, meaning, impact, suggested next

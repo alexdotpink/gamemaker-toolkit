@@ -6,7 +6,7 @@ import { formatGml, formatGmlDocument, getGmlFormatterDebugInfo } from "../src/f
 import { analyzeExpressionAtText, analyzeGmlSource, simplifyExpressionText } from "../src/analysis";
 import { expectedArgumentCount, findBuiltin, GML_BUILTINS, GML_EVENTS } from "../src/gmlKnowledge";
 import { buildGmlProjectIndex } from "../src/projectIndex";
-import { compareTrivia } from "../src/trivia";
+import { collectTriviaComments, compareTrivia } from "../src/trivia";
 
 test("formats nested GML blocks", async () => {
   const input = [
@@ -524,6 +524,42 @@ test("preserves switch case line comments across safety checks", async () => {
   assert.match(result.formatted, /case 6: \/\/ pauses then sends Swami back/);
 });
 
+test("preserves switch case comments when Windows CRLF line endings are used", async () => {
+  const input = [
+    "Swami_X = Swami_obj.x",
+    "Swami_Y = Swami_obj.y",
+    "",
+    "switch(fase){",
+    "    case 1: //First time loading in",
+    "        if (count >= 30){                              //Calibrare il framerate",
+    "            Swami_obj.sprite = Swami_Walk_Right",
+    "            Swami_obj.frame = 10",
+    '            dialoguebarUI.ROOM = "GAME START"',
+    "            dialoguebarUI.txt_num = 1",
+    "            fase += 1",
+    "            Tabris_X = 1850;",
+    "        }else count +=1;",
+    "        break;",
+    "",
+    "    case 6: //pauses then sends Swami back",
+    "        break;",
+    "",
+    "    case 12: case 13: case 14: //syncs camera movement to Swami",
+    "        Swami_obj.x = Tabris_X;",
+    "        break;",
+    "}",
+  ].join("\r\n");
+
+  const result = await formatGmlDocument(input);
+  assert.deepEqual(result.parserErrors, []);
+  assert.deepEqual(result.safetyErrors, []);
+  assert.deepEqual(result.safetyDiagnostics, []);
+  assert.match(result.formatted, /\r\n/);
+  assert.equal(collectTriviaComments(input).length, collectTriviaComments(result.formatted).length);
+  assert.equal((result.formatted.match(/\/\/ syncs camera movement to Swami/g) ?? []).length, 1);
+  assert.match(result.formatted, /if \(count >= 30\) \{ \/\/ Calibrare il framerate/);
+});
+
 test("preserves chained switch case comments", async () => {
   const input = [
     "switch(fase){",
@@ -612,7 +648,7 @@ test("builds a GameMaker project index with resources, symbols, and unresolved r
     },
     {
       path: "/project/objects/o/Step_0.gml",
-      content: "if (hp <= 0) instance_destroy();",
+      content: "hp -= 1;\nif (hp <= 0) instance_destroy();",
     },
   ]);
   assert.ok(index.resources.some((resource) => resource.name === "MEWO_SP"));

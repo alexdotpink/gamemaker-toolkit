@@ -9,7 +9,7 @@ on:
       tag:
         description: "Release tag to package and publish"
         required: true
-        default: "v0.10.0"
+        default: "v0.10.1"
 
 permissions:
   contents: write

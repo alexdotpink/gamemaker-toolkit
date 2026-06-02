@@ -410,6 +410,8 @@ function collectIdentifierReferences(file: GmlProjectFile): GmlIndexedSymbol[] {
     }
     for (const match of code.matchAll(/\b[A-Za-z_][A-Za-z0-9_]*\b/g)) {
       const name = match[0];
+      const previousChar = match.index === undefined ? "" : code[match.index - 1];
+      if (previousChar === ".") continue;
       const dottedParent = [...dottedReferences].some(
         (dotted) =>
           match.index !== undefined &&
@@ -528,6 +530,7 @@ function buildProjectGraph(
   const maybeUninitializedVariables = variableLifecycle.filter(
     (entry) =>
       !entry.assignedInCreate &&
+      entry.assignedFiles.length > 0 &&
       entry.readFiles.some((file) => /\/Step/i.test(file.replace(/\\/g, "/"))),
   );
   return {

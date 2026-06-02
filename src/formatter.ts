@@ -315,7 +315,9 @@ export async function formatGmlDocument(
   source: string,
   options: GmlFormatOptions = {},
 ): Promise<GmlFormatResult> {
-  const parsed = await parseWithBscotch(source);
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const normalized = normalizeSourceNewlines(source);
+  const parsed = await parseWithBscotch(normalized);
   const parserDiagnostics = collectParseDiagnostics(parsed);
   const parserErrors = parserDiagnostics.map((diagnostic) => diagnostic.message);
 
@@ -331,8 +333,6 @@ export async function formatGmlDocument(
   }
 
   const settings = resolveFormatterSettings(options);
-  const newline = source.includes("\r\n") ? "\r\n" : "\n";
-  const normalized = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const printer = new CstPrinter(normalized, parsed, settings);
   let formatted = printer.print().join(newline) + (normalized.endsWith("\n") ? newline : "");
   formatted = restoreMissingLineComments(source, formatted, newline);
@@ -389,7 +389,8 @@ export async function formatGmlDocument(
 }
 
 export async function getGmlFormatterDebugInfo(source: string): Promise<GmlFormatterDebugInfo> {
-  const parsed = await parseWithBscotch(source);
+  const normalized = normalizeSourceNewlines(source);
+  const parsed = await parseWithBscotch(normalized);
   const statements = parsed.cst.children.statements?.filter(isCstNode)[0];
   const ast = normalizeGmlAst(parsed.cst);
   const formatterAst = buildFormatterGmlAst(parsed.cst, parsed.lexed.tokens);
@@ -401,11 +402,15 @@ export async function getGmlFormatterDebugInfo(source: string): Promise<GmlForma
     rootNode: parsed.cst.name,
     topLevelStatements: statements?.children.statement?.filter(isCstNode).length ?? 0,
     normalizedAstSummary: summarizeGmlAst(ast),
-    comments: collectComments(source),
-    commentAttachments: collectCommentAttachments(source, parsed.lexed.tokens),
+    comments: collectComments(normalized),
+    commentAttachments: collectCommentAttachments(normalized, parsed.lexed.tokens),
     semanticSignature: semanticTokenSignature(parsed),
     formatterAstSummary: summarizeFormatterGmlAst(formatterAst),
   };
+}
+
+function normalizeSourceNewlines(source: string): string {
+  return source.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
 function resolveFormatterSettings(options: GmlFormatOptions): FormatterSettings {

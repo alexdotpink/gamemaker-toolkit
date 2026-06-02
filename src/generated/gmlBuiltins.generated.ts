@@ -332,6 +332,15 @@ export const GENERATED_GML_BUILTINS: GmlBuiltin[] = [
     returns: "string",
   },
   {
+    name: "tilemap_get_at_pixel",
+    kind: "function",
+    signature: "tilemap_get_at_pixel(tilemap_element_id, x, y)",
+    description: "Returns tile data from a tilemap element at a room pixel position.",
+    parameters: ["tilemap_element_id", "x", "y"],
+    requiredParameters: 3,
+    returns: "tile data",
+  },
+  {
     name: "vk_enter",
     kind: "constant",
     signature: "vk_enter",

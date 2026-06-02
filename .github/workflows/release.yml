@@ -40,7 +40,22 @@ jobs:
           files: "*.vsix"
       - name: Publish to VS Code Marketplace
         if: env.VSCE_PAT != ''
-        run: pnpm exec vsce publish --packagePath *.vsix --pat "$VSCE_PAT"
+        run: pnpm exec vsce publish --packagePath ./*.vsix --pat "$VSCE_PAT"
       - name: Publish to Open VSX
         if: env.OVSX_PAT != ''
-        run: pnpm dlx ovsx publish *.vsix -p "$OVSX_PAT"
+        run: |
+          set -euo pipefail
+          namespace="alexdotpink"
+
+          set +e
+          namespace_output="$(pnpm dlx ovsx create-namespace "$namespace" -p "$OVSX_PAT" 2>&1)"
+          namespace_status=$?
+          set -e
+
+          printf '%s\n' "$namespace_output"
+          if [ "$namespace_status" -ne 0 ] && ! printf '%s\n' "$namespace_output" | grep -qiE 'already exists|already.*namespace|namespace.*already'; then
+            exit "$namespace_status"
+          fi
+
+          pnpm dlx ovsx verify-pat "$namespace" -p "$OVSX_PAT"
+          pnpm dlx ovsx publish ./*.vsix -p "$OVSX_PAT"

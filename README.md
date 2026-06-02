@@ -4,6 +4,31 @@ GameMaker Toolkit is a VS Code extension for GameMaker Language (`.gml`) project
 formatter, parser-backed safety checks, a language server, project indexing, diagnostics,
 completions, hovers, navigation, dialogue analysis, and project reports.
 
+## Install
+
+The preferred install method is the VS Code Marketplace:
+
+[Install GameMaker Toolkit from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=alexdotpink.gamemaker-toolkit)
+
+You can also install it from inside VS Code:
+
+1. Open the Extensions view.
+2. Search for `GameMaker Toolkit`.
+3. Install the extension published by `alexdotpink`.
+
+Alternative install options:
+
+- Open VSX:
+  [alexdotpink.gamemaker-toolkit](https://open-vsx.org/extension/alexdotpink/gamemaker-toolkit)
+- GitHub Release VSIX:
+  [gamemaker-toolkit-0.9.0.vsix](https://github.com/alexdotpink/gamemaker-toolkit/releases/download/v0.9.0/gamemaker-toolkit-0.9.0.vsix)
+
+To install a downloaded VSIX manually:
+
+```sh
+code --install-extension path/to/gamemaker-toolkit-0.9.0.vsix --force
+```
+
 ## Features
 
 - Registers `.gml` as the `gml` language in VS Code.
@@ -118,12 +143,6 @@ code --install-extension gamemaker-toolkit-0.9.0.vsix --force
 On Windows, run the same commands from PowerShell, Command Prompt, or Git Bash after installing
 Node.js and VS Code. The package scripts use Node-based runners, so they do not require Unix shell
 syntax.
-
-When installing from a GitHub release instead of a clone, download the `.vsix` file and run:
-
-```sh
-code --install-extension path/to/gamemaker-toolkit-0.9.0.vsix --force
-```
 
 ## GitHub Releases
 

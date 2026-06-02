@@ -160,8 +160,10 @@ export async function analyzeGmlSource(
     );
   }
   const lines = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  const metrics = calculateMetrics(lines);
+  const codeLines = stripCommentsForCode(lines);
+  const metrics = calculateMetrics(lines, codeLines);
   findings.push(...metricFindings(metrics));
+  findings.push(...findReadableConditionHints(lines, codeLines));
   const todoComments = findTodoComments(lines);
   findings.push(
     ...todoComments.map((comment) => ({
@@ -194,7 +196,7 @@ export async function analyzeGmlSource(
     });
   }
 
-  findings.push(...findFlowFindings(lines));
+  findings.push(...findFlowFindings(lines, codeLines));
   const magicNumbers = findMagicNumbers(lines);
   findings.push(
     ...magicNumbers
@@ -351,15 +353,19 @@ function arraysEqual(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function calculateMetrics(lines: string[]): GmlComplexityMetrics {
+function calculateMetrics(
+  lines: string[],
+  codeLines = stripCommentsForCode(lines),
+): GmlComplexityMetrics {
   let codeLineCount = 0;
   let commentLineCount = 0;
   let functionCount = 0;
   let maxBraceDepth = 0;
   let braceDepth = 0;
   let cyclomaticComplexity = 1;
-  for (const line of lines) {
-    const code = stripLineComment(line);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const code = stripLineComment(codeLines[index]);
     const trimmedCode = code.trim();
     const trimmedLine = line.trim();
     if (trimmedCode) codeLineCount += 1;
@@ -383,23 +389,6 @@ function calculateMetrics(lines: string[]): GmlComplexityMetrics {
 
 function metricFindings(metrics: GmlComplexityMetrics): GmlDiagnosticFinding[] {
   const findings: GmlDiagnosticFinding[] = [];
-  if (metrics.cyclomaticComplexity >= 30) {
-    findings.push({
-      severity: "warning",
-      code: "complexity",
-      message: `High cyclomatic complexity (${metrics.cyclomaticComplexity}). Consider splitting logic into functions or smaller states.`,
-      line: 1,
-      column: 1,
-    });
-  } else if (metrics.cyclomaticComplexity >= 18) {
-    findings.push({
-      severity: "info",
-      code: "complexity",
-      message: `Moderate cyclomatic complexity (${metrics.cyclomaticComplexity}).`,
-      line: 1,
-      column: 1,
-    });
-  }
   if (metrics.maxBraceDepth >= 7) {
     findings.push({
       severity: "warning",
@@ -421,6 +410,30 @@ function metricFindings(metrics: GmlComplexityMetrics): GmlDiagnosticFinding[] {
   return findings;
 }
 
+function findReadableConditionHints(
+  lines: string[],
+  codeLines = stripCommentsForCode(lines),
+): GmlDiagnosticFinding[] {
+  const findings: GmlDiagnosticFinding[] = [];
+  codeLines.forEach((line, index) => {
+    const code = stripLineComment(line);
+    if (!/\bif\b|\bwhile\b|\bfor\b|\buntil\b/.test(code)) return;
+    const connectorCount = countMatches(code, /\b(?:and|or)\b|&&|\|\|/g);
+    if (connectorCount < 5) return;
+
+    const checks = connectorCount + 1;
+    const originalLine = lines[index];
+    findings.push({
+      severity: "info",
+      code: "long-condition",
+      message: `This condition checks ${checks} things at once. Consider naming it with a helper variable or function so it reads like a sentence.`,
+      line: index + 1,
+      column: Math.max(1, originalLine.search(/\bif\b|\bwhile\b|\bfor\b|\buntil\b/) + 1),
+    });
+  });
+  return findings;
+}
+
 function findTodoComments(lines: string[]): GmlTodoComment[] {
   const todos: GmlTodoComment[] = [];
   lines.forEach((line, index) => {
@@ -438,11 +451,14 @@ function findTodoComments(lines: string[]): GmlTodoComment[] {
   return todos;
 }
 
-function findFlowFindings(lines: string[]): GmlDiagnosticFinding[] {
+function findFlowFindings(
+  lines: string[],
+  codeLines = stripCommentsForCode(lines),
+): GmlDiagnosticFinding[] {
   const findings: GmlDiagnosticFinding[] = [];
   let unreachable = false;
   for (let index = 0; index < lines.length; index += 1) {
-    const stripped = stripLineComment(lines[index]).trim();
+    const stripped = stripLineComment(codeLines[index]).trim();
     if (!stripped) continue;
     if (unreachable && !/^(?:case\b|default:|\})/.test(stripped)) {
       findings.push({
@@ -457,7 +473,7 @@ function findFlowFindings(lines: string[]): GmlDiagnosticFinding[] {
     unreachable = /\b(?:break|continue|return|exit)\s*;?\s*$/.test(stripped);
   }
   const seenCases = new Map<string, number>();
-  lines.forEach((line, index) => {
+  codeLines.forEach((line, index) => {
     const match = line.match(/^\s*case\s+([^:]+):/);
     if (!match) return;
     const label = match[1].trim();
@@ -474,7 +490,7 @@ function findFlowFindings(lines: string[]): GmlDiagnosticFinding[] {
       seenCases.set(label, index + 1);
     }
   });
-  lines.forEach((line, index) => {
+  codeLines.forEach((line, index) => {
     if (/\belse\s+if\b.*\{\s*\}/.test(line) || /\bif\b.*\{\s*\}/.test(line)) {
       findings.push({
         severity: "warning",
@@ -647,15 +663,6 @@ function findStateMachines(lines: string[], stateVariables: string[]): GmlStateM
         warnings.push(`case ${stateCase.label} has multiple ${variable} transitions.`);
       if (!stateCase.hasBreak && stateCase.transitions.length > 0)
         warnings.push(`case ${stateCase.label} changes ${variable} without an obvious break.`);
-    }
-    const labels = cases
-      .map((stateCase) => Number(stateCase.label))
-      .filter((label) => Number.isFinite(label))
-      .sort((left, right) => left - right);
-    for (let labelIndex = 1; labelIndex < labels.length; labelIndex += 1) {
-      if (labels[labelIndex] - labels[labelIndex - 1] > 1) {
-        warnings.push(`missing cases between ${labels[labelIndex - 1]} and ${labels[labelIndex]}.`);
-      }
     }
     machines.push({
       variable,
@@ -852,6 +859,62 @@ function collectCaseBlock(lines: string[], startIndex: number): string[] {
     collected.push(lines[index]);
   }
   return collected;
+}
+
+function stripCommentsForCode(lines: string[]): string[] {
+  const stripped: string[] = [];
+  let inBlockComment = false;
+
+  for (const line of lines) {
+    let code = "";
+    let quote: string | undefined;
+
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index];
+      const next = line[index + 1];
+
+      if (inBlockComment) {
+        if (char === "*" && next === "/") {
+          inBlockComment = false;
+          index += 1;
+        }
+        continue;
+      }
+
+      if (quote) {
+        code += char;
+        if (char === "\\") {
+          code += next ?? "";
+          index += 1;
+        } else if (char === quote) {
+          quote = undefined;
+        }
+        continue;
+      }
+
+      if (char === '"' || char === "'") {
+        quote = char;
+        code += char;
+        continue;
+      }
+
+      if (char === "/" && next === "/") {
+        break;
+      }
+
+      if (char === "/" && next === "*") {
+        inBlockComment = true;
+        index += 1;
+        continue;
+      }
+
+      code += char;
+    }
+
+    stripped.push(code);
+  }
+
+  return stripped;
 }
 
 function stripLineComment(line: string): string {

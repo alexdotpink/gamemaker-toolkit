@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.4
+
+- Removed generic cyclomatic-complexity diagnostics from live analysis. Beginner-facing diagnostics
+  now point at specific code instead of showing abstract file-level scores.
+- Added a targeted long-condition hint that explains when one condition checks many things at once
+  and suggests naming it with a helper variable or function.
+- Stopped counting block comments as code for analyzer metrics and flow warnings.
+- Stopped warning about missing numeric gaps in GameMaker state-machine `case` labels.
+- Kept info-level analysis hints out of live VS Code Problems; the Problems panel now focuses on
+  warnings and errors.
+
 ## 0.9.3
 
 - Kept line comments that appear after an opening control-flow brace on the control-flow header, so

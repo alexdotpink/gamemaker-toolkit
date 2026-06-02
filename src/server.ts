@@ -200,24 +200,22 @@ connection.languages.semanticTokens.on(async (params) => {
 async function validateDocument(document: TextDocument): Promise<void> {
   if (!isGmlUri(document.uri)) return;
   const report = await analyzeGmlSource(document.getText());
-  const diagnostics = report.findings.map((finding) => ({
-    range: {
-      start: { line: Math.max(0, finding.line - 1), character: Math.max(0, finding.column - 1) },
-      end: {
-        line: Math.max(0, (finding.endLine ?? finding.line) - 1),
-        character: Math.max(1, finding.endColumn ?? finding.column),
+  const diagnostics = report.findings
+    .filter((finding) => finding.severity !== "info")
+    .map((finding) => ({
+      range: {
+        start: { line: Math.max(0, finding.line - 1), character: Math.max(0, finding.column - 1) },
+        end: {
+          line: Math.max(0, (finding.endLine ?? finding.line) - 1),
+          character: Math.max(1, finding.endColumn ?? finding.column),
+        },
       },
-    },
-    severity:
-      finding.severity === "error"
-        ? DiagnosticSeverity.Error
-        : finding.severity === "warning"
-          ? DiagnosticSeverity.Warning
-          : DiagnosticSeverity.Information,
-    message: finding.message,
-    source: "GameMaker Toolkit",
-    code: finding.code,
-  }));
+      severity:
+        finding.severity === "error" ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+      message: finding.message,
+      source: "GameMaker Toolkit",
+      code: finding.code,
+    }));
   const file = uriToPath(document.uri);
   for (const reference of projectIndex.unresolvedReferences.filter(
     (candidate) => candidate.file === file,

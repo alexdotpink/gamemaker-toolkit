@@ -388,6 +388,49 @@ test("analyzes state machines, dialogue consistency, names, and expressions", as
   );
 });
 
+test("analysis explains long conditions without generic complexity warnings", async () => {
+  const input = [
+    "switch (fase) {",
+    "    case 1:",
+    "        break;",
+    "    /*case x:",
+    "        if fake and fake2 and fake3 break;",
+    "    */",
+    "}",
+    "",
+    "if ((1776 < Swami_X and Swami_X < 2016) or (2688 < Swami_X and Swami_X < 2976) or ((240 < Swami_Y and Swami_Y < 336) and (2304 < Swami_X and Swami_X < 2400))) {",
+    "    dialoguebarUI.txt_num = 3;",
+    "}",
+  ].join("\n");
+  const withoutBlockComment = input.replace(
+    "    /*case x:\n        if fake and fake2 and fake3 break;\n    */\n",
+    "",
+  );
+
+  const report = await analyzeGmlSource(input);
+  const reportWithoutBlockComment = await analyzeGmlSource(withoutBlockComment);
+  assert.equal(
+    report.metrics.cyclomaticComplexity,
+    reportWithoutBlockComment.metrics.cyclomaticComplexity,
+  );
+  assert.equal(
+    report.findings.some((finding) => finding.code === "complexity"),
+    false,
+  );
+  assert.equal(
+    report.findings.some((finding) => finding.code === "unreachable"),
+    false,
+  );
+  assert.ok(
+    report.findings.some(
+      (finding) =>
+        finding.code === "long-condition" &&
+        finding.line === 9 &&
+        finding.message.includes("checks 8 things"),
+    ),
+  );
+});
+
 test("compares trivia while ignoring comments inside strings and strings inside comments", () => {
   const left = 'text = "// nope"; //yes\n/* "not a string" */\n';
   const right = 'text = "// nope"; // yes\n/* "not a string" */\n';

@@ -26,7 +26,7 @@ Alternative install options:
 To install a downloaded VSIX manually:
 
 ```sh
-code --install-extension path/to/gamemaker-toolkit-0.9.3.vsix --force
+code --install-extension path/to/gamemaker-toolkit-0.9.4.vsix --force
 ```
 
 ## Features
@@ -137,7 +137,7 @@ Package a local VSIX and install it into VS Code:
 
 ```sh
 pnpm package
-code --install-extension gamemaker-toolkit-0.9.3.vsix --force
+code --install-extension gamemaker-toolkit-0.9.4.vsix --force
 ```
 
 On Windows, run the same commands from PowerShell, Command Prompt, or Git Bash after installing
@@ -149,8 +149,8 @@ syntax.
 Tagged releases create a VSIX automatically through GitHub Actions:
 
 ```sh
-git tag v0.9.3
-git push origin v0.9.3
+git tag v0.9.4
+git push origin v0.9.4
 ```
 
 The release workflow runs the same `pnpm package:check` gate before attaching the `.vsix` file to
@@ -251,7 +251,7 @@ Current analysis features:
 - string literal preservation audit
 - magic-number detection
 - constant arithmetic detection for tuning values such as `(46 / 2025)`
-- file metrics for complexity, nesting, function count, code lines, and comment lines
+- file metrics for branch/condition score, nesting, function count, code lines, and comment lines
 - TODO/FIXME/BUG/HACK/NOTE comment detection
 - asset-reference extraction for common sprite, sound, object, room, path, font, and timeline usages
 - suspicious-name detection such as `chioces` -> `choices`

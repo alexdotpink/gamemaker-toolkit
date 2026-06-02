@@ -2,7 +2,7 @@
   "name": "gamemaker-toolkit",
   "displayName": "GameMaker Toolkit",
   "description": "Formatter, analyzer, project index, and language tools for GameMaker Language (.gml) in VS Code.",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "publisher": "alexdotpink",
   "author": "alexdotpink",
   "license": "MIT",

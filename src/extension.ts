@@ -1028,7 +1028,7 @@ function analysisMarkdown(fileName: string, report: GmlAnalysisReport): string {
     "## Metrics",
     `- Lines: ${report.metrics.lineCount} total, ${report.metrics.codeLineCount} code, ${report.metrics.commentLineCount} with comments`,
     `- Functions: ${report.metrics.functionCount}`,
-    `- Cyclomatic complexity: ${report.metrics.cyclomaticComplexity}`,
+    `- Branch and condition score: ${report.metrics.cyclomaticComplexity}`,
     `- Max brace depth: ${report.metrics.maxBraceDepth}`,
     "",
     "## Findings",

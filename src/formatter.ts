@@ -818,7 +818,9 @@ class CstPrinter {
       const printed = this.printStatement(statement, indentLevel);
       const comment = this.trailingLineComment(location.endOffset + 1);
       if (comment && printed.length > 0) {
-        printed[printed.length - 1] = `${printed[printed.length - 1]} ${comment.text}`;
+        if (!printed.some((line) => line.includes(comment.text))) {
+          printed[printed.length - 1] = `${printed[printed.length - 1]} ${comment.text}`;
+        }
         cursor = comment.endOffset;
       } else {
         cursor = location.endOffset + 1;
@@ -1112,6 +1114,24 @@ class CstPrinter {
       lines.push(...this.printBlockableContents(body, indentLevel + 1));
       return lines;
     }
+
+    const block = this.childOptional(body, "blockStatement");
+    if (block) {
+      const location = this.location(block)!;
+      const headerComment = this.trailingLineComment(location.startOffset + 1);
+      const lines = [
+        `${this.indent(indentLevel)}${header} {${headerComment ? ` ${headerComment.text}` : ""}`,
+      ];
+      lines.push(
+        ...this.printStatements(this.children(block, "statement"), indentLevel + 1, {
+          startOffset: headerComment?.endOffset ?? location.startOffset + 1,
+          endOffset: location.endOffset,
+        }),
+      );
+      lines.push(`${this.indent(indentLevel)}}`);
+      return lines;
+    }
+
     const lines = [`${this.indent(indentLevel)}${header} {`];
     lines.push(...this.printBlockableContents(body, indentLevel + 1));
     lines.push(`${this.indent(indentLevel)}}`);

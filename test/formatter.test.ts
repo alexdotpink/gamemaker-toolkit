@@ -410,7 +410,7 @@ test("preserves switch case line comments across safety checks", async () => {
   const input = [
     "switch(fase){",
     "    case 1: //First time loading in ",
-    "        if (count >= 30){ ",
+    "        if (count >= 30){                              //Calibrare il framerate",
     "            fase += 1  ",
     "        }else count +=1;",
     "        break;",
@@ -423,6 +423,8 @@ test("preserves switch case line comments across safety checks", async () => {
   assert.deepEqual(result.parserErrors, []);
   assert.deepEqual(result.safetyErrors, []);
   assert.match(result.formatted, /case 1: \/\/ First time loading in/);
+  assert.match(result.formatted, /if \(count >= 30\) \{ \/\/ Calibrare il framerate/);
+  assert.doesNotMatch(result.formatted, /\n\s+\/\/ Calibrare il framerate\n/);
   assert.match(result.formatted, /case 6: \/\/ pauses then sends Swami back/);
 });
 
@@ -439,6 +441,21 @@ test("preserves chained switch case comments", async () => {
   assert.deepEqual(result.parserErrors, []);
   assert.deepEqual(result.safetyErrors, []);
   assert.match(result.formatted, /\/\/ syncs camera movement to Swami/);
+});
+
+test("does not duplicate comments on expanded else-if statements", async () => {
+  const input = [
+    "if TXT == TP{",
+    "    if key {//TRUET",
+    "        initialize();",
+    "    }",
+    "}else if key TXT = TP; //TRUET",
+  ].join("\n");
+
+  const result = await formatGmlDocument(input);
+  assert.deepEqual(result.parserErrors, []);
+  assert.deepEqual(result.safetyErrors, []);
+  assert.equal((result.formatted.match(/\/\/ TRUET/g) ?? []).length, 2);
 });
 
 test("analysis does not surface formatter safety as editor problems", async () => {

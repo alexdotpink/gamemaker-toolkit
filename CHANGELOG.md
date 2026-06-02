@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.3
+
+- Kept line comments that appear after an opening control-flow brace on the control-flow header, so
+  `if (...) { // comment` no longer gets moved into the body as a standalone comment.
+- Fixed duplicate trailing comments when no-brace `else if` statements are expanded into braced
+  blocks.
+- Added regressions for the Chessworld `// Calibrare il framerate` and `// TRUET` formatter cases,
+  plus real VS Code extension-host verification on fresh copied files.
+
 ## 0.9.2
 
 - Added a formatter comment-preservation fallback that re-attaches missing line comments before the

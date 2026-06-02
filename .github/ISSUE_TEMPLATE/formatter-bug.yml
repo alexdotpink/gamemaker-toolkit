@@ -1,0 +1,46 @@
+name: Formatter bug
+description: Report GML code that formats incorrectly, refuses to format, or changes meaning.
+title: "fix(formatter): "
+labels:
+  - formatter
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. Small before/after examples are the fastest way to fix formatter bugs.
+  - type: textarea
+    id: input
+    attributes:
+      label: Original GML
+      description: Paste the smallest snippet that reproduces the issue.
+      render: gml
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual formatted output
+      render: gml
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected output
+      render: gml
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: GameMaker Toolkit version
+      placeholder: "0.9.4"
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: Relevant settings
+      description: Include formatter style, safety mode, indentation, and any project rules.
+      render: json

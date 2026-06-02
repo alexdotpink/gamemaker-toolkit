@@ -7,6 +7,7 @@ import {
 import { collectTriviaComments, collectTriviaStrings, compareTrivia } from "./trivia";
 
 export interface GmlProjectRules {
+  enableProjectPatternAnalysis?: boolean;
   stateVariables?: string[];
   languageVariables?: string[];
   requiredLanguages?: string[];
@@ -25,6 +26,11 @@ export interface GmlDiagnosticFinding {
   column: number;
   endLine?: number;
   endColumn?: number;
+  title?: string;
+  explanation?: string;
+  whyItMatters?: string;
+  suggestion?: string;
+  quickFixes?: string[];
 }
 
 export interface GmlMagicNumber {
@@ -84,6 +90,13 @@ export interface GmlComplexityMetrics {
   cyclomaticComplexity: number;
 }
 
+export interface GmlBranchContributor {
+  line: number;
+  score: number;
+  reason: string;
+  code: string;
+}
+
 export interface GmlTodoComment {
   tag: string;
   text: string;
@@ -107,6 +120,7 @@ export interface GmlConstantExpression {
 export interface GmlAnalysisReport {
   findings: GmlDiagnosticFinding[];
   metrics: GmlComplexityMetrics;
+  branchContributors: GmlBranchContributor[];
   todoComments: GmlTodoComment[];
   magicNumbers: GmlMagicNumber[];
   suspiciousNames: GmlSuspiciousName[];
@@ -124,10 +138,11 @@ export interface GmlAnalysisReport {
 }
 
 const DEFAULT_RULES: Required<GmlProjectRules> = {
+  enableProjectPatternAnalysis: false,
   stateVariables: ["fase", "phase", "state"],
-  languageVariables: ["global.LAN"],
-  requiredLanguages: ["ITA", "ENG"],
-  dialogueObjects: ["dialoguebarUI"],
+  languageVariables: [],
+  requiredLanguages: [],
+  dialogueObjects: [],
 };
 
 const TYPO_SUGGESTIONS = new Map([
@@ -162,6 +177,7 @@ export async function analyzeGmlSource(
   const lines = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
   const codeLines = stripCommentsForCode(lines);
   const metrics = calculateMetrics(lines, codeLines);
+  const branchContributors = findBranchContributors(lines, codeLines);
   findings.push(...metricFindings(metrics));
   findings.push(...findReadableConditionHints(lines, codeLines));
   const todoComments = findTodoComments(lines);
@@ -246,7 +262,7 @@ export async function analyzeGmlSource(
     );
   }
 
-  const dialogueCases = findDialogueCases(lines, rules);
+  const dialogueCases = rules.enableProjectPatternAnalysis ? findDialogueCases(lines, rules) : [];
   for (const dialogue of dialogueCases) {
     findings.push(
       ...dialogue.warnings.map((warning) => ({
@@ -290,8 +306,9 @@ export async function analyzeGmlSource(
         : "high";
 
   return {
-    findings,
+    findings: findings.map(explainDiagnosticFinding),
     metrics,
+    branchContributors,
     todoComments,
     magicNumbers,
     suspiciousNames,
@@ -309,6 +326,158 @@ export async function analyzeGmlSource(
   };
 }
 
+export function explainDiagnosticFinding(finding: GmlDiagnosticFinding): GmlDiagnosticFinding {
+  const templates: Record<
+    string,
+    Pick<
+      GmlDiagnosticFinding,
+      "title" | "explanation" | "whyItMatters" | "suggestion" | "quickFixes"
+    >
+  > = {
+    "parse-error": {
+      title: "GameMaker cannot read this line yet",
+      explanation:
+        "The formatter stops when the parser reports a syntax error, because changing broken code can make the real mistake harder to find.",
+      whyItMatters:
+        "Fixing the syntax first lets the formatter prove it preserved the code structure.",
+      suggestion:
+        "Look just before this line for a missing semicolon, brace, parenthesis, or comma.",
+      quickFixes: [
+        "Open the formatter debug output",
+        "Add a missing semicolon when the line is complete",
+      ],
+    },
+    "comment-preservation": {
+      title: "A comment would move or change",
+      explanation:
+        "The safety gate compares comments before and after formatting and refuses the file when they do not match.",
+      whyItMatters:
+        "Comments often explain cutscene timing and state transitions, so the formatter must not guess.",
+      suggestion: "Use the format preview or debug command to see the first comment mismatch.",
+      quickFixes: ["Preview format changes", "Show formatter debug info"],
+    },
+    "string-preservation": {
+      title: "A string would change",
+      explanation: "The safety gate found that a quoted string was not identical after formatting.",
+      whyItMatters: "Dialogue text, room names, and resource names are gameplay data in GameMaker.",
+      suggestion: "Keep safety enabled and inspect the skipped-format explanation.",
+      quickFixes: ["Explain why this file was not formatted"],
+    },
+    "long-condition": {
+      title: "This condition is doing a lot at once",
+      explanation:
+        "The line combines several checks with and/or. It may be correct, but it is harder to debug when one part is wrong.",
+      whyItMatters:
+        "In GameMaker scene code, long conditions often control timing, dialogue, and movement all at once.",
+      suggestion:
+        "Name the condition with a local variable, split it into smaller checks, or add a short comment that says what it means.",
+      quickFixes: ["Explain the expression", "Extract a selected number to a #macro"],
+    },
+    "nesting-depth": {
+      title: "This code is deeply nested",
+      explanation:
+        "Many brace levels mean the reader has to keep several conditions in their head at the same time.",
+      whyItMatters:
+        "Deep nesting makes scene bugs feel random because the active branch is hard to see.",
+      suggestion:
+        "Consider early returns, helper scripts, or splitting a state case into smaller steps.",
+      quickFixes: ["Open Scene Flow View", "Generate scene notes"],
+    },
+    "large-file": {
+      title: "This file is getting large",
+      explanation:
+        "Large event files are common in GameMaker projects, but they become harder to test and navigate.",
+      whyItMatters:
+        "Cutscene and dialogue bugs are easier to isolate when each file has a smaller job.",
+      suggestion: "Use the project map and scene notes to decide what could become a script.",
+      quickFixes: ["Open Project Doctor", "Open project map"],
+    },
+    unreachable: {
+      title: "This line may never run",
+      explanation:
+        "A break, continue, return, or exit appeared before this statement in the same flow.",
+      whyItMatters:
+        "Unreachable code can make a scene look configured even though GameMaker never reaches it.",
+      suggestion: "Move the statement before the exit point, or put it in the next case/branch.",
+      quickFixes: ["Open Scene Flow View"],
+    },
+    "duplicate-case": {
+      title: "Two cases use the same label",
+      explanation: "Only one switch case with this label can be the intended destination.",
+      whyItMatters: "A duplicated state number can make a cutscene jump to the wrong block.",
+      suggestion: "Rename one case or merge the duplicated logic.",
+      quickFixes: ["Open Scene Flow View"],
+    },
+    "empty-branch": {
+      title: "This branch is empty",
+      explanation: "The branch has braces but no visible work inside them.",
+      whyItMatters: "Empty branches are easy to leave behind while testing movement or dialogue.",
+      suggestion:
+        "Remove the branch, add the missing code, or add a comment explaining that it is intentional.",
+      quickFixes: ["Normalize comments"],
+    },
+    "magic-number": {
+      title: "This number has gameplay meaning",
+      explanation:
+        "Numbers like positions, speeds, delays, and frame counts are easier to tune when they have names.",
+      whyItMatters: "Named constants make GameMaker code less fragile when scenes change.",
+      suggestion:
+        "Extract the number to a #macro or local variable with a name that explains the meaning.",
+      quickFixes: ["Extract number to #macro"],
+    },
+    "suspicious-name": {
+      title: "This name looks misspelled",
+      explanation: "A likely typo was found in an identifier or comment.",
+      whyItMatters: "Typos make search, resource references, and collaboration harder.",
+      suggestion: "Rename it if the suggested spelling matches what you meant.",
+      quickFixes: ["Rename manually", "Search all references"],
+    },
+    "constant-expression": {
+      title: "This math always has the same value",
+      explanation:
+        "The expression contains only numbers and operators, so it can be named or simplified.",
+      whyItMatters: "Named curve and timing constants are easier to tune than raw formulas.",
+      suggestion: "Use a #macro if the value represents physics, movement, timing, or layout.",
+      quickFixes: ["Simplify selected expression", "Extract number to #macro"],
+    },
+    "state-machine": {
+      title: "Scene state flow may be confusing",
+      explanation: "This switch case changes the state in a way that may be hard to follow.",
+      whyItMatters: "State machines drive cutscenes; unclear jumps make bugs hard to reproduce.",
+      suggestion: "Open the scene flow view to see cases and transitions as a graph.",
+      quickFixes: ["Open Scene Flow View", "Generate scene notes"],
+    },
+    dialogue: {
+      title: "Project dialogue pattern may not line up",
+      explanation:
+        "An opt-in project-pattern analyzer found arrays, LEN, choices, or language branches that do not appear consistent.",
+      whyItMatters:
+        "In projects using this convention, mismatched data can show missing text, wrong faces, or broken choices.",
+      suggestion:
+        "Check the reported txt_num block, or disable project-pattern analysis if this convention does not apply to your project.",
+      quickFixes: ["Export dialogue CSV", "Open Project Doctor"],
+    },
+    "repeated-expression": {
+      title: "This expression repeats",
+      explanation: "The same calculation appears more than once.",
+      whyItMatters:
+        "Repeated movement math can drift when one copy is edited and another is forgotten.",
+      suggestion: "Extract it to a local variable or helper script.",
+      quickFixes: ["Simplify selected expression"],
+    },
+  };
+  return {
+    ...finding,
+    ...(templates[finding.code] ?? {
+      title: finding.message,
+      explanation: "GameMaker Toolkit found something worth reviewing.",
+      whyItMatters: "Small readability issues can become gameplay bugs when scene code grows.",
+      suggestion: "Review the line and use the related GML commands for more context.",
+      quickFixes: ["Analyze current file"],
+    }),
+  };
+}
+
 export function analyzeExpressionAtText(text: string): ExpressionExplanation {
   return explainGmlExpression(text);
 }
@@ -319,6 +488,8 @@ export function simplifyExpressionText(text: string): string {
 
 function resolveRules(rules?: GmlProjectRules): Required<GmlProjectRules> {
   return {
+    enableProjectPatternAnalysis:
+      rules?.enableProjectPatternAnalysis ?? DEFAULT_RULES.enableProjectPatternAnalysis,
     stateVariables: rules?.stateVariables ?? DEFAULT_RULES.stateVariables,
     languageVariables: rules?.languageVariables ?? DEFAULT_RULES.languageVariables,
     requiredLanguages: rules?.requiredLanguages ?? DEFAULT_RULES.requiredLanguages,
@@ -385,6 +556,31 @@ function calculateMetrics(
     maxBraceDepth,
     cyclomaticComplexity,
   };
+}
+
+function findBranchContributors(
+  lines: string[],
+  codeLines = stripCommentsForCode(lines),
+): GmlBranchContributor[] {
+  const contributors: GmlBranchContributor[] = [];
+  codeLines.forEach((line, index) => {
+    const code = stripLineComment(line).trim();
+    if (!code) return;
+    const branches = countMatches(code, /\b(?:if|case|for|while|repeat|with|catch)\b/g);
+    const connectors = countMatches(code, /\b(?:and|or)\b|&&|\|\||\?/g);
+    const score = branches + connectors;
+    if (score === 0) return;
+    const parts = [];
+    if (branches) parts.push(`${branches} branch keyword${branches === 1 ? "" : "s"}`);
+    if (connectors) parts.push(`${connectors} condition connector${connectors === 1 ? "" : "s"}`);
+    contributors.push({
+      line: index + 1,
+      score,
+      reason: parts.join(", "),
+      code: lines[index].trim(),
+    });
+  });
+  return contributors.sort((left, right) => right.score - left.score || left.line - right.line);
 }
 
 function metricFindings(metrics: GmlComplexityMetrics): GmlDiagnosticFinding[] {

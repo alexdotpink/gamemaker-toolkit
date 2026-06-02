@@ -3,7 +3,8 @@ import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import test from "node:test";
 import { formatGml, formatGmlDocument, getGmlFormatterDebugInfo } from "../src/formatter";
-import { analyzeGmlSource, simplifyExpressionText } from "../src/analysis";
+import { analyzeExpressionAtText, analyzeGmlSource, simplifyExpressionText } from "../src/analysis";
+import { expectedArgumentCount, findBuiltin, GML_BUILTINS, GML_EVENTS } from "../src/gmlKnowledge";
 import { buildGmlProjectIndex } from "../src/projectIndex";
 import { compareTrivia } from "../src/trivia";
 
@@ -328,12 +329,16 @@ test("fuzzes representative valid snippets for safety and idempotency", async ()
 test("style presets produce meaningfully different output", async () => {
   const input = "if x y=1";
   assert.equal(
-    await formatGml(input, { style: "opinionated" }),
+    await formatGml(input, { style: "readable" }),
     ["if (x) {", "    y = 1;", "}"].join("\n"),
   );
   assert.equal(
     await formatGml(input, { style: "minimal", safety: "parse-only" }),
     ["if (x)", "    y = 1"].join("\n"),
+  );
+  assert.equal(
+    await formatGml(input, { style: "compact", safety: "parse-only" }),
+    ["if (x) {", "    y = 1;", "}"].join("\n"),
   );
 });
 
@@ -361,7 +366,14 @@ test("analyzes state machines, dialogue consistency, names, and expressions", as
     "}",
   ].join("\n");
 
-  const report = await analyzeGmlSource(input);
+  const report = await analyzeGmlSource(input, {
+    projectRules: {
+      enableProjectPatternAnalysis: true,
+      languageVariables: ["global.LAN"],
+      requiredLanguages: ["ITA", "ENG"],
+      dialogueObjects: ["dialoguebarUI"],
+    },
+  });
   assert.ok(report.stateMachines[0].warnings.some((warning) => warning.includes("multiple")));
   assert.ok(report.dialogueCases[0].warnings.some((warning) => warning.includes("LEN is 3")));
   assert.ok(
@@ -372,6 +384,8 @@ test("analyzes state machines, dialogue consistency, names, and expressions", as
     report.repeatedExpressions.some((expression) => expression.expression === "Mewo_X - 3429"),
   );
   assert.ok(report.metrics.cyclomaticComplexity > 1);
+  assert.ok(report.branchContributors.some((entry) => entry.code.includes("global.LAN")));
+  assert.ok(report.findings.some((finding) => finding.title && finding.explanation));
   assert.ok(report.todoComments.some((comment) => comment.tag === "TODO"));
   assert.ok(
     report.constantExpressions.some((expression) => expression.expression === "(46 / 2025)"),
@@ -382,10 +396,49 @@ test("analyzes state machines, dialogue consistency, names, and expressions", as
     ),
   );
   assert.equal(simplifyExpressionText("ready == true"), "ready");
+  assert.match(analyzeExpressionAtText("ready == true").plainEnglish, /equals true/);
+  assert.equal(analyzeExpressionAtText("a or b and c").fullyParenthesized, "(a || (b && c))");
   assert.equal(
     simplifyExpressionText("((46/2025)*(Mewo_X-3429)*(Mewo_X-3429)+266)"),
     "((46 / 2025) * sqr(Mewo_X - 3429) + 266)",
   );
+});
+
+test("keeps project-specific dialogue and localization checks opt-in", async () => {
+  const input = [
+    "function Draw_choices(){",
+    "    switch (txt_num) {",
+    "        case 5:",
+    "            LEN = 3;",
+    "            face = [7, 7];",
+    '            if global.LAN == "ITA" {',
+    '                text = ["a", "b"];',
+    "            }",
+    "            break;",
+    "    }",
+    "}",
+  ].join("\n");
+
+  const defaultReport = await analyzeGmlSource(input);
+  const enabledReport = await analyzeGmlSource(input, {
+    projectRules: {
+      enableProjectPatternAnalysis: true,
+      languageVariables: ["global.LAN"],
+      requiredLanguages: ["ITA", "ENG"],
+      dialogueObjects: ["dialoguebarUI"],
+    },
+  });
+
+  assert.equal(defaultReport.dialogueCases.length, 0);
+  assert.ok(enabledReport.dialogueCases.length > 0);
+});
+
+test("loads generated GameMaker built-ins and event definitions", () => {
+  const drawSprite = findBuiltin("draw_sprite");
+  assert.ok(GML_BUILTINS.length >= 30);
+  assert.ok(GML_EVENTS.some((event) => event.filePrefix === "Step"));
+  assert.ok(drawSprite);
+  assert.deepEqual(expectedArgumentCount(drawSprite), { min: 4, max: 4 });
 });
 
 test("analysis explains long conditions without generic complexity warnings", async () => {
@@ -532,9 +585,34 @@ test("builds a GameMaker project index with resources, symbols, and unresolved r
       content: JSON.stringify({ name: "MEWO_SP", resourceType: "GMSprite" }),
     },
     {
+      path: "/project/objects/OBJ_ENEMY/OBJ_ENEMY.yy",
+      content: JSON.stringify({ name: "OBJ_ENEMY", resourceType: "GMObject" }),
+    },
+    {
+      path: "/project/rooms/ROOM_START/ROOM_START.yy",
+      content: JSON.stringify({
+        name: "ROOM_START",
+        resourceType: "GMRoom",
+        layers: [
+          {
+            name: "Instances",
+            instances: [{ objectId: { name: "OBJ_ENEMY" } }],
+          },
+        ],
+      }),
+    },
+    {
       path: "/project/objects/o/Draw_0.gml",
       content:
-        "#macro SPEED 4\nfunction Draw_chioces() {}\ndraw_sprite(MEWO_SP, 0, x, y);\ndraw_sprite(MISSING_SP, 0, x, y);",
+        "#macro SPEED 4\nfunction Draw_chioces() {}\nvar local_score = 0;\ndraw_sprite(MEWO_SP, 0, x, y);\ndraw_sprite(OBJ_ENEMY, 0, x, y);\ndraw_sprite(MISSING_SP, 0, x, y);",
+    },
+    {
+      path: "/project/objects/o/Create_0.gml",
+      content: "ready = false;",
+    },
+    {
+      path: "/project/objects/o/Step_0.gml",
+      content: "if (hp <= 0) instance_destroy();",
     },
   ]);
   assert.ok(index.resources.some((resource) => resource.name === "MEWO_SP"));
@@ -544,6 +622,27 @@ test("builds a GameMaker project index with resources, symbols, and unresolved r
   );
   assert.ok(index.resourceReferences.some((reference) => reference.name === "MEWO_SP"));
   assert.ok(index.unresolvedReferences.some((reference) => reference.name === "MISSING_SP"));
+  assert.ok(index.unresolvedReferences[0].suggestions);
+  assert.ok(index.identifierReferences.some((reference) => reference.name === "local_score"));
+  assert.ok(
+    index.rooms.some((room) => room.name === "ROOM_START" && room.layers.includes("Instances")),
+  );
+  assert.ok(index.inferredTypes.some((type) => type.name === "MEWO_SP" && type.type === "sprite"));
+  assert.ok(
+    index.objectEvents.some((event) => event.objectName === "o" && event.eventName === "Step"),
+  );
+  assert.ok(
+    index.graph.variableLifecycle.some(
+      (entry) => entry.objectName === "o" && entry.variable === "ready" && entry.assignedInCreate,
+    ),
+  );
+  assert.ok(
+    index.graph.maybeUninitializedVariables.some(
+      (entry) => entry.objectName === "o" && entry.variable === "hp",
+    ),
+  );
+  assert.ok(index.graph.resourceUsage.some((usage) => usage.resource.name === "OBJ_ENEMY"));
+  assert.ok(index.graph.resourceTypeMismatches.some((mismatch) => mismatch.name === "OBJ_ENEMY"));
 });
 
 test("is idempotent for representative formatted code", async () => {

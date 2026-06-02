@@ -2,7 +2,7 @@
   "name": "gamemaker-toolkit",
   "displayName": "GameMaker Toolkit",
   "description": "Formatter, analyzer, project index, and language tools for GameMaker Language (.gml) in VS Code.",
-  "version": "0.9.4",
+  "version": "0.10.0",
   "publisher": "alexdotpink",
   "author": "alexdotpink",
   "license": "MIT",
@@ -43,18 +43,34 @@
     "onCommand:gmlFormatter.configureDefaultFormatter",
     "onCommand:gmlFormatter.diagnoseSetup",
     "onCommand:gmlFormatter.explainSkippedFormat",
+    "onCommand:gmlFormatter.explainProblem",
     "onCommand:gmlFormatter.formatAndShowDiff",
+    "onCommand:gmlFormatter.previewFormatChanges",
     "onCommand:gmlFormatter.workspaceDryRun",
     "onCommand:gmlFormatter.openPlayground",
+    "onCommand:gmlFormatter.projectDoctor",
     "onCommand:gmlFormatter.analyzeCurrentFile",
     "onCommand:gmlFormatter.explainExpression",
     "onCommand:gmlFormatter.simplifyExpression",
     "onCommand:gmlFormatter.generateSceneNotes",
     "onCommand:gmlFormatter.analyzeStateMachine",
+    "onCommand:gmlFormatter.openSceneFlowView",
     "onCommand:gmlFormatter.openProjectMap",
     "onCommand:gmlFormatter.rebuildProjectIndex",
     "onCommand:gmlFormatter.goToResource",
     "onCommand:gmlFormatter.exportDialogueCsv",
+    "onCommand:gmlFormatter.previewSafeCleanup",
+    "onCommand:gmlFormatter.applySafeCleanup",
+    "onCommand:gmlFormatter.makeCodeReadable",
+    "onCommand:gmlFormatter.explainCurrentFile",
+    "onCommand:gmlFormatter.reportFormatterBug",
+    "onCommand:gmlFormatter.installDoctor",
+    "onCommand:gmlFormatter.openObjectEventMap",
+    "onCommand:gmlFormatter.openCutsceneTimeline",
+    "onCommand:gmlFormatter.previewStateEnum",
+    "onCommand:gmlFormatter.previewResourceRename",
+    "onCommand:gmlFormatter.openGlobalsReport",
+    "onCommand:gmlFormatter.minimizeFormatterBug",
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
@@ -117,8 +133,18 @@
         "category": "GML"
       },
       {
+        "command": "gmlFormatter.explainProblem",
+        "title": "GML: Explain Problem",
+        "category": "GML"
+      },
+      {
         "command": "gmlFormatter.formatAndShowDiff",
         "title": "GML: Format and Show Diff",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.previewFormatChanges",
+        "title": "GML: Preview Format Changes",
         "category": "GML"
       },
       {
@@ -134,6 +160,11 @@
       {
         "command": "gmlFormatter.analyzeCurrentFile",
         "title": "GML: Analyze Current File",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.projectDoctor",
+        "title": "GML: Project Doctor",
         "category": "GML"
       },
       {
@@ -157,6 +188,11 @@
         "category": "GML"
       },
       {
+        "command": "gmlFormatter.openSceneFlowView",
+        "title": "GML: Open Scene Flow View",
+        "category": "GML"
+      },
+      {
         "command": "gmlFormatter.openProjectMap",
         "title": "GML: Open Project Map",
         "category": "GML"
@@ -174,6 +210,66 @@
       {
         "command": "gmlFormatter.exportDialogueCsv",
         "title": "GML: Export Dialogue CSV",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.previewSafeCleanup",
+        "title": "GML: Preview Safe Cleanup Fixes",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.applySafeCleanup",
+        "title": "GML: Apply Safe Cleanup Fixes",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.makeCodeReadable",
+        "title": "GML: Make This Code Easier To Read",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.explainCurrentFile",
+        "title": "GML: Explain This File",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.reportFormatterBug",
+        "title": "GML: Report Formatter Bug",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.installDoctor",
+        "title": "GML: Installation Doctor",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.openObjectEventMap",
+        "title": "GML: Open Object Event Map",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.openCutsceneTimeline",
+        "title": "GML: Open Cutscene Timeline",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.previewStateEnum",
+        "title": "GML: Preview State Enum",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.previewResourceRename",
+        "title": "GML: Preview Resource Rename",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.openGlobalsReport",
+        "title": "GML: Open Globals Report",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.minimizeFormatterBug",
+        "title": "GML: Minimize Formatter Bug",
         "category": "GML"
       }
     ],
@@ -230,14 +326,18 @@
         },
         "gmlFormatter.style": {
           "type": "string",
-          "default": "opinionated",
+          "default": "readable",
           "enum": [
+            "readable",
+            "compact",
+            "strict",
+            "repair",
             "opinionated",
             "minimal",
             "preserve",
             "gameMakerStudio"
           ],
-          "description": "Formatter style preset."
+          "description": "Formatter style preset. Readable is the beginner-friendly default; compact keeps output tighter; strict uses the strictest trivia safety; repair is for damaged snippets."
         },
         "gmlFormatter.safety": {
           "type": "string",
@@ -265,23 +365,17 @@
         "gmlFormatter.projectRules": {
           "type": "object",
           "default": {
+            "enableProjectPatternAnalysis": false,
             "stateVariables": [
               "fase",
               "phase",
               "state"
             ],
-            "languageVariables": [
-              "global.LAN"
-            ],
-            "requiredLanguages": [
-              "ITA",
-              "ENG"
-            ],
-            "dialogueObjects": [
-              "dialoguebarUI"
-            ]
+            "languageVariables": [],
+            "requiredLanguages": [],
+            "dialogueObjects": []
           },
-          "description": "Project-specific analysis rules for state machines, dialogue languages, and dialogue objects."
+          "description": "Optional project-specific analysis rules. GameMaker state-machine detection is generic; dialogue/localization conventions are disabled unless enableProjectPatternAnalysis is true."
         },
         "gmlFormatter.mode": {
           "type": "string",
@@ -310,14 +404,21 @@
           "type": "boolean",
           "default": true,
           "description": "Insert readable blank lines between adjacent top-level blocks, functions, switch statements, and other control-flow sections."
+        },
+        "gmlFormatter.onboarding.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Offer one-click setup when a .gml file is opened and GameMaker Toolkit is not the default formatter."
         }
       }
     }
   },
   "scripts": {
-    "build": "tsc -p . && esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js && esbuild src/server.ts --bundle --platform=node --format=cjs --outfile=dist/server.js",
+    "generate:gml-knowledge": "node scripts/generate-gml-knowledge.mjs",
+    "build": "pnpm generate:gml-knowledge && tsc -p . && esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js && esbuild src/server.ts --bundle --platform=node --format=cjs --outfile=dist/server.js",
     "test": "pnpm build && node scripts/run-tests.mjs",
     "test:extension": "pnpm test",
+    "test:extension-host": "pnpm build && node scripts/run-extension-host-tests.mjs",
     "fixtures:test": "pnpm build && node scripts/formatter-tools.mjs fixtures:test",
     "fixtures:update": "pnpm build && node scripts/formatter-tools.mjs fixtures:update",
     "corpus": "pnpm build && node scripts/formatter-tools.mjs corpus",
@@ -332,15 +433,17 @@
     "snapshot:update": "pnpm build && node scripts/formatter-tools.mjs snapshot:update",
     "debug-format": "pnpm build && node scripts/formatter-tools.mjs debug-format",
     "playground": "pnpm build && node scripts/formatter-tools.mjs playground",
+    "public-fixtures:test": "pnpm build && node scripts/formatter-tools.mjs corpus public-fixtures --safety parse-only && node scripts/formatter-tools.mjs analyze public-fixtures && node scripts/formatter-tools.mjs project-index public-fixtures",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "package:check": "pnpm format:check && pnpm test && pnpm fixtures:test && pnpm fuzz && pnpm package",
+    "package:check": "pnpm format:check && pnpm test && pnpm public-fixtures:test && pnpm fixtures:test && pnpm fuzz && pnpm test:extension-host && pnpm package",
     "watch": "tsc -watch -p .",
     "package": "pnpm build && vsce package --allow-missing-repository --no-dependencies"
   },
   "devDependencies": {
     "@types/node": "^20.14.8",
     "@types/vscode": "1.90.0",
+    "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^2.32.0",
     "esbuild": "^0.28.0",
     "prettier": "^3.8.3",

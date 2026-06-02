@@ -6,6 +6,9 @@
     { "include": "#preprocessor" },
     { "include": "#keywords" },
     { "include": "#constants" },
+    { "include": "#builtins" },
+    { "include": "#resources" },
+    { "include": "#variables" },
     { "include": "#numbers" },
     { "include": "#functions" },
     { "include": "#operators" }
@@ -65,6 +68,42 @@
         {
           "name": "constant.language.gml",
           "match": "\\b(?:true|false|undefined|noone|self|other|all|global|local|NaN|infinity|pi)\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.gml",
+          "match": "\\b(?:show_debug_message|draw_sprite(?:_ext|_part|_stretched|_pos)?|draw_text|draw_set_font|audio_play_sound|instance_create_(?:layer|depth)|room_goto(?:_next|_previous)?|floor|ceil|round|abs|min|max|clamp|sqr|sqrt|sin|cos|lengthdir_x|lengthdir_y|point_direction|point_distance)\\b"
+        },
+        {
+          "name": "support.constant.gml",
+          "match": "\\b(?:vk_[A-Za-z0-9_]+|fa_[A-Za-z0-9_]+|c_[A-Za-z0-9_]+|bm_[A-Za-z0-9_]+)\\b"
+        }
+      ]
+    },
+    "resources": {
+      "patterns": [
+        {
+          "name": "entity.name.type.resource.gml",
+          "match": "\\b(?:spr|obj|rm|snd|fnt|scr|path|tl)_[A-Za-z0-9_]+\\b|\\b[A-Z][A-Z0-9_]*(?:_SP|_OBJ|_ROOM|_SND|_FONT)\\b"
+        }
+      ]
+    },
+    "variables": {
+      "patterns": [
+        {
+          "name": "variable.language.argument.gml",
+          "match": "\\bargument[0-9]+\\b"
+        },
+        {
+          "name": "variable.other.global.gml",
+          "match": "\\bglobal\\.[A-Za-z_][A-Za-z0-9_]*\\b"
+        },
+        {
+          "name": "variable.other.property.gml",
+          "match": "(?<=\\.)[A-Za-z_][A-Za-z0-9_]*\\b"
         }
       ]
     },

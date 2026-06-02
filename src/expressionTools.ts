@@ -6,6 +6,8 @@ export interface ExpressionSimplification {
 
 export interface ExpressionExplanation {
   expression: string;
+  plainEnglish: string;
+  fullyParenthesized: string;
   shape: string[];
   detectedPatterns: string[];
   suggestions: string[];
@@ -144,6 +146,8 @@ export function explainGmlExpression(expression: string): ExpressionExplanation 
 
   return {
     expression: trimmed,
+    plainEnglish: explainInPlainEnglish(trimmed),
+    fullyParenthesized: fullyParenthesizeExpression(trimmed),
     shape,
     detectedPatterns,
     suggestions,
@@ -204,6 +208,52 @@ function expressionShape(expression: string): string[] {
   }
   lines.push(expression);
   return lines;
+}
+
+function explainInPlainEnglish(expression: string): string {
+  const normalized = expression
+    .replace(/\s+/g, " ")
+    .replace(/\band\b/g, "&&")
+    .replace(/\bor\b/g, "||")
+    .trim();
+  const orParts = splitTopLevel(normalized, "||");
+  if (orParts.length > 1) {
+    return `This is true when ${orParts.map(explainInPlainEnglish).join(" or ")}.`;
+  }
+  const andParts = splitTopLevel(normalized, "&&");
+  if (andParts.length > 1) {
+    return `all of these are true: ${andParts.map(explainInPlainEnglish).join("; ")}.`;
+  }
+  const comparison = normalized.match(/^(.+?)\s*(==|!=|<=|>=|<|>)\s*(.+)$/);
+  if (comparison) {
+    const [, left, operator, right] = comparison;
+    const words: Record<string, string> = {
+      "==": "equals",
+      "!=": "does not equal",
+      "<=": "is at most",
+      ">=": "is at least",
+      "<": "is less than",
+      ">": "is greater than",
+    };
+    return `${left.trim()} ${words[operator]} ${right.trim()}`;
+  }
+  if (/^!\s*/.test(normalized)) return `not (${normalized.replace(/^!\s*/, "").trim()})`;
+  return normalized;
+}
+
+function fullyParenthesizeExpression(expression: string): string {
+  const normalized = expression
+    .replace(/\s+/g, " ")
+    .replace(/\band\b/g, "&&")
+    .replace(/\bor\b/g, "||")
+    .trim();
+  for (const operator of ["||", "&&", "==", "!=", ">=", "<=", ">", "<", "+", "-", "*", "/"]) {
+    const parts = splitTopLevel(normalized, operator);
+    if (parts.length > 1) {
+      return `(${parts.map(fullyParenthesizeExpression).join(` ${operator} `)})`;
+    }
+  }
+  return normalized;
 }
 
 function repeatedParenthesizedFactor(expression: string): string | undefined {

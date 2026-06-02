@@ -31,5 +31,30 @@ jobs:
       - run: pnpm format:check
       - run: pnpm test
       - run: pnpm fixtures:test
+      - run: pnpm public-fixtures:test
       - run: pnpm fuzz
       - run: pnpm package
+
+  extension-host:
+    name: VS Code extension host smoke / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm test:extension-host
+      - if: runner.os == 'Windows'
+        run: pnpm test:extension-host

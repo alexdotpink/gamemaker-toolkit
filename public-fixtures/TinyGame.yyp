@@ -1,0 +1,24 @@
+{
+  "name": "TinyGame",
+  "resourceType": "GMProject",
+  "resources": [
+    {
+      "id": {
+        "name": "SPR_PLAYER",
+        "path": "sprites/SPR_PLAYER/SPR_PLAYER.yy"
+      }
+    },
+    {
+      "id": {
+        "name": "OBJ_CONTROLLER",
+        "path": "objects/OBJ_CONTROLLER/OBJ_CONTROLLER.yy"
+      }
+    },
+    {
+      "id": {
+        "name": "ROOM_START",
+        "path": "rooms/ROOM_START/ROOM_START.yy"
+      }
+    }
+  ]
+}

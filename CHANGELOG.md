@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.10.0
+
+- Added beginner-friendly diagnostic explanations with titles, meaning, impact, suggested next
+  steps, and quick-fix hints.
+- Added `GML: Explain Problem`, `GML: Preview Format Changes`, `GML: Project Doctor`, and
+  `GML: Open Scene Flow View`.
+- Added `GML: Preview Safe Cleanup Fixes`, `GML: Apply Safe Cleanup Fixes`,
+  `GML: Make This Code Easier To Read`, `GML: Explain This File`, `GML: Report Formatter Bug`, and
+  `GML: Installation Doctor`.
+- Added quick fixes for comment spacing, inline control-flow bodies, missing semicolons, expression
+  simplification, and magic-number extraction.
+- Added inline code lenses for state-machine cases, branch-heavy conditions, and repeated
+  expressions.
+- Added language-server signature help, rename support, contextual completion ranking, inferred type
+  completions, richer built-in hover docs, and resource type-mismatch diagnostics.
+- Added generated GameMaker API knowledge data for built-ins/events, plus a
+  `pnpm generate:gml-knowledge` import path for expanding IntelliSense without hand-editing
+  TypeScript.
+- Added built-in argument-count diagnostics, event-aware hints, object-event maps, cutscene timeline
+  previews, state enum previews, resource rename previews, globals reports, and formatter bug
+  minimization.
+- Added project graph data for rooms, resource usage, unused-resource hints, room instances, and
+  inferred resource/value types, object events, and maybe-uninitialized instance-variable hints.
+- Made dialogue/localization analysis opt-in project-pattern analysis instead of treating
+  project-specific systems as first-party GameMaker behavior.
+- Added readable, compact, strict, and repair formatter presets. `readable` is now the documented
+  default.
+- Improved expression explanations with plain-English summaries and fully parenthesized forms.
+- Improved project awareness with likely-resource suggestions for unresolved resource references.
+- Improved semantic and TextMate highlighting for built-ins, resource names, globals, properties,
+  arguments, macros, strings, comments, and constants.
+- Added one-click onboarding when `.gml` files open without GameMaker Toolkit as the default
+  formatter.
+- Added a public fixture corpus and `pnpm public-fixtures:test`.
+- Added a real VS Code extension-host smoke runner through `pnpm test:extension-host` and Linux /
+  Windows CI.
+- Added GitHub issue templates for formatter bugs, language-server bugs, missing GameMaker API data,
+  and feature requests.
+- Updated Marketplace-facing README sections for install, safety, beginner diagnostics, scene-flow
+  tools, public fixtures, and extension-host testing.
+
 ## 0.9.4
 
 - Removed generic cyclomatic-complexity diagnostics from live analysis. Beginner-facing diagnostics

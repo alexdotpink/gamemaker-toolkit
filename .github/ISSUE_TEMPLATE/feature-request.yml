@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest a formatter, analyzer, project, or beginner-helper feature.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What would this help you do in a GameMaker project?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Suggested solution
+      description: Describe the command, diagnostic, formatter behavior, or UI you want.
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: Example GML or project context
+      render: gml

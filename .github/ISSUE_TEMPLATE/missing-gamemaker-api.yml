@@ -1,0 +1,31 @@
+name: Missing GameMaker API
+description: Request a built-in function, variable, constant, event, or signature for IntelliSense.
+title: "data(api): add "
+labels:
+  - gamemaker-api
+  - intellisense
+body:
+  - type: input
+    id: name
+    attributes:
+      label: API name
+      placeholder: "draw_sprite, keyboard_check, room_goto, ..."
+    validations:
+      required: true
+  - type: input
+    id: signature
+    attributes:
+      label: Signature or expected usage
+      placeholder: "draw_sprite(sprite, subimg, x, y)"
+  - type: input
+    id: docs
+    attributes:
+      label: Documentation link
+      placeholder: "https://manual.gamemaker.io/..."
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description:
+        Include return type, resource argument types, optional parameters, or deprecation info if
+        known.

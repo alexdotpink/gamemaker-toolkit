@@ -17,7 +17,15 @@ export interface GmlFormatOptions {
   printWidth?: number;
   trailingCommas?: boolean;
   multilineFunctionCalls?: "auto" | "always" | "never";
-  style?: "opinionated" | "minimal" | "preserve" | "gameMakerStudio";
+  style?:
+    | "readable"
+    | "compact"
+    | "strict"
+    | "repair"
+    | "opinionated"
+    | "minimal"
+    | "preserve"
+    | "gameMakerStudio";
   safety?: "ast-equivalence" | "ast-and-trivia" | "trivia-strict" | "parse-only" | "off";
   mode?: "file" | "snippet" | "expression" | "macro";
   trimTrailingWhitespace?: boolean;
@@ -119,7 +127,15 @@ interface FormatterSettings {
   printWidth: number;
   trailingCommas: boolean;
   multilineFunctionCalls: "auto" | "always" | "never";
-  style: "opinionated" | "minimal" | "preserve" | "gameMakerStudio";
+  style:
+    | "readable"
+    | "compact"
+    | "strict"
+    | "repair"
+    | "opinionated"
+    | "minimal"
+    | "preserve"
+    | "gameMakerStudio";
   safety: "ast-equivalence" | "ast-and-trivia" | "trivia-strict" | "parse-only" | "off";
   mode: "file" | "snippet" | "expression" | "macro";
   trimTrailingWhitespace: boolean;
@@ -138,7 +154,7 @@ const DEFAULT_OPTIONS: FormatterSettings = {
   printWidth: 100,
   trailingCommas: false,
   multilineFunctionCalls: "auto",
-  style: "opinionated",
+  style: "readable",
   safety: "ast-and-trivia",
   mode: "file",
   trimTrailingWhitespace: true,
@@ -394,12 +410,18 @@ export async function getGmlFormatterDebugInfo(source: string): Promise<GmlForma
 
 function resolveFormatterSettings(options: GmlFormatOptions): FormatterSettings {
   const settings = { ...DEFAULT_OPTIONS, ...options };
-  if (settings.style === "minimal") {
-    settings.multilineFunctionCalls = options.multilineFunctionCalls ?? "never";
+  if (settings.style === "readable" || settings.style === "opinionated") {
     settings.maxBlankLines = options.maxBlankLines ?? 2;
+    settings.readableSpacing = options.readableSpacing ?? true;
+    settings.enforceBraces = true;
+    settings.enforceSemicolons = true;
+    settings.normalizeComments = true;
+  } else if (settings.style === "compact" || settings.style === "minimal") {
+    settings.multilineFunctionCalls = options.multilineFunctionCalls ?? "never";
+    settings.maxBlankLines = options.maxBlankLines ?? 1;
     settings.readableSpacing = options.readableSpacing ?? false;
-    settings.enforceBraces = false;
-    settings.enforceSemicolons = false;
+    settings.enforceBraces = settings.style === "compact";
+    settings.enforceSemicolons = settings.style === "compact";
     settings.simplifyParentheses = false;
   } else if (settings.style === "preserve") {
     settings.multilineFunctionCalls = options.multilineFunctionCalls ?? "never";
@@ -414,6 +436,13 @@ function resolveFormatterSettings(options: GmlFormatOptions): FormatterSettings 
     settings.printWidth = options.printWidth ?? 120;
     settings.maxBlankLines = options.maxBlankLines ?? 1;
     settings.splitLongConditions = false;
+  } else if (settings.style === "strict") {
+    settings.safety = options.safety ?? "trivia-strict";
+    settings.maxBlankLines = options.maxBlankLines ?? 2;
+    settings.readableSpacing = options.readableSpacing ?? true;
+  } else if (settings.style === "repair") {
+    settings.safety = options.safety ?? "parse-only";
+    settings.maxBlankLines = options.maxBlankLines ?? 2;
   }
   return settings;
 }

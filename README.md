@@ -2,7 +2,8 @@
 
 GameMaker Toolkit is a VS Code extension for GameMaker Language (`.gml`) projects. It includes a
 formatter, parser-backed safety checks, a language server, project indexing, diagnostics,
-completions, hovers, navigation, dialogue analysis, and project reports.
+completions, hovers, signatures, navigation, rename support, generated GameMaker API knowledge,
+room-aware project reports, optional project-pattern analysis, and beginner-friendly cleanup tools.
 
 ## Install
 
@@ -26,7 +27,7 @@ Alternative install options:
 To install a downloaded VSIX manually:
 
 ```sh
-code --install-extension path/to/gamemaker-toolkit-0.9.4.vsix --force
+code --install-extension path/to/gamemaker-toolkit-0.10.0.vsix --force
 ```
 
 ## Features
@@ -48,17 +49,32 @@ code --install-extension path/to/gamemaker-toolkit-0.9.4.vsix --force
 - Adds missing semicolons to ordinary statements.
 - Supports document formatting, range formatting, formatter debug info, setup diagnosis, formatted
   diffs, skipped-format explanations, workspace dry runs, and a default-formatter setup command.
+- Includes formatter preview, safe cleanup preview/apply, and a readability workflow that groups
+  safe fixes separately from refactor suggestions.
 - Indexes GameMaker projects from `.yyp`, `.yy`, and `.gml` files for resource completions, built-in
-  hovers, definitions, references, workspace symbols, and unresolved-resource diagnostics.
+  hovers, signature help, definitions, references, rename, workspace symbols, typo suggestions,
+  inferred resource/value types, and unresolved-resource diagnostics.
+- Builds a project graph with room instances, resource usage, unused-resource hints, and resource
+  type-mismatch checks.
 - Includes corpus scanning, fixture approval, check/write, project snapshots, generated fuzzing,
   debug-format, and local playground CLI tools.
 - Includes a VS Code formatter playground webview with AST, comments, parser, and safety output.
 - Adds a bundled language server for diagnostics, document symbols, workspace symbols, semantic
-  tokens, completions, hovers, definitions, and references.
-- Adds smart expression tools, state-machine analysis, dialogue consistency checks, scene-note
-  generation, and a GameMaker project map.
-- Includes basic syntax highlighting, snippets, folding, bracket matching, comment toggling, and
-  indentation rules for `.gml`.
+  tokens, completions, hovers, signatures, definitions, references, and rename.
+- Uses generated GameMaker API data for built-in completions, hover docs, signatures, argument
+  diagnostics, resource argument hints, and event-aware warnings.
+- Adds smart expression tools, state-machine analysis, a scene-flow view, cutscene timeline notes,
+  state enum previews, scene-note generation, Project Doctor, and a GameMaker project map.
+- Adds object-event maps, maybe-uninitialized instance-variable hints, globals reports, and resource
+  rename previews.
+- Keeps dialogue/localization checks as optional project-pattern analysis instead of treating
+  project-specific systems as first-party GameMaker features.
+- Adds inline code lenses for scene states, branch-heavy conditions, and repeated expressions.
+- Adds `Explain This File`, `Installation Doctor`, and `Report Formatter Bug` commands.
+- Includes syntax highlighting, semantic tokens, snippets, folding, bracket matching, comment
+  toggling, and indentation rules for `.gml`.
+- Offers one-click onboarding when a `.gml` file opens and this extension is not the default
+  formatter.
 - Preserves preprocessor lines such as `#macro` and `#region`.
 - Supports spaces or tabs, configurable indent size, trailing whitespace trimming, and blank-line
   limits.
@@ -72,29 +88,43 @@ code --install-extension path/to/gamemaker-toolkit-0.9.4.vsix --force
   "gmlFormatter.printWidth": 100,
   "gmlFormatter.trailingCommas": false,
   "gmlFormatter.multilineFunctionCalls": "auto",
-  "gmlFormatter.style": "opinionated",
+  "gmlFormatter.style": "readable",
   "gmlFormatter.safety": "ast-and-trivia",
   "gmlFormatter.smartSimplify": "suggest",
   "gmlFormatter.projectRules": {
+    "enableProjectPatternAnalysis": false,
     "stateVariables": ["fase", "phase", "state"],
-    "languageVariables": ["global.LAN"],
-    "requiredLanguages": ["ITA", "ENG"],
-    "dialogueObjects": ["dialoguebarUI"]
+    "languageVariables": [],
+    "requiredLanguages": [],
+    "dialogueObjects": []
   },
   "gmlFormatter.mode": "file",
   "gmlFormatter.trimTrailingWhitespace": true,
   "gmlFormatter.maxBlankLines": 2,
-  "gmlFormatter.readableSpacing": true
+  "gmlFormatter.readableSpacing": true,
+  "gmlFormatter.onboarding.enabled": true
 }
 ```
 
 Style presets:
 
-- `opinionated`: braces, semicolons, normalized comments, operator spacing, readable blank-line
-  separators, and multiline layout.
-- `minimal`: safer low-churn formatting with fewer automatic multiline rewrites.
+- `readable`: beginner-friendly default with braces, semicolons, normalized comments, operator
+  spacing, readable blank-line separators, and multiline layout.
+- `compact`: keeps the same safety expectations while using fewer blank-line separators.
+- `strict`: readable formatting with the strictest trivia safety mode by default.
+- `repair`: parse-only safety for damaged snippets and manual recovery work.
+- `opinionated`: compatibility alias for the readable preset.
+- `minimal`: lower-churn formatting with fewer automatic rewrites.
 - `preserve`: keeps more whitespace choices intact.
 - `gameMakerStudio`: a wider, GameMaker-like preset.
+
+Project pattern rules:
+
+- `stateVariables` controls generic switch/state-machine detection.
+- `enableProjectPatternAnalysis` turns on optional project-specific checks such as
+  dialogue/localization patterns.
+- `languageVariables`, `requiredLanguages`, and `dialogueObjects` are empty by default because those
+  systems are project conventions, not standard GameMaker APIs.
 
 Safety modes:
 
@@ -126,6 +156,17 @@ Build and test:
 pnpm test
 ```
 
+Regenerate the bundled GameMaker API knowledge after editing `data/gml-builtins.seed.json` or after
+importing a fuller JSON data source:
+
+```sh
+pnpm generate:gml-knowledge
+```
+
+The official GameMaker manual publishes the GML reference as documentation pages. This repository
+keeps the extension data as importable JSON so the knowledge pack can be expanded without wiring
+every built-in manually in TypeScript.
+
 Format the repository's TypeScript, JSON, Markdown, and scripts:
 
 ```sh
@@ -137,7 +178,7 @@ Package a local VSIX and install it into VS Code:
 
 ```sh
 pnpm package
-code --install-extension gamemaker-toolkit-0.9.4.vsix --force
+code --install-extension gamemaker-toolkit-0.10.0.vsix --force
 ```
 
 On Windows, run the same commands from PowerShell, Command Prompt, or Git Bash after installing
@@ -149,8 +190,8 @@ syntax.
 Tagged releases create a VSIX automatically through GitHub Actions:
 
 ```sh
-git tag v0.9.4
-git push origin v0.9.4
+git tag v0.10.0
+git push origin v0.10.0
 ```
 
 The release workflow runs the same `pnpm package:check` gate before attaching the `.vsix` file to
@@ -162,7 +203,14 @@ publishes the same VSIX to the VS Code Marketplace and Open VSX.
 ## Continuous Integration
 
 CI runs on Ubuntu, Windows, and macOS with Node.js 20 and 22. It checks formatting, tests, fixtures,
-fuzzing, and VSIX packaging.
+public fixtures, fuzzing, and VSIX packaging.
+
+A separate extension-host smoke test runs the extension inside VS Code on the public fixture corpus
+on Linux and Windows:
+
+```sh
+pnpm test:extension-host
+```
 
 ## Commands
 
@@ -172,18 +220,34 @@ fuzzing, and VSIX packaging.
 - `GML: Make This The Default Formatter`
 - `GML: Diagnose Formatter Setup`
 - `GML: Explain Why This File Was Not Formatted`
+- `GML: Explain Problem`
 - `GML: Format and Show Diff`
+- `GML: Preview Format Changes`
 - `GML: Format Workspace Dry Run`
 - `GML: Open Formatter Playground`
 - `GML: Analyze Current File`
+- `GML: Project Doctor`
 - `GML: Explain Expression Under Cursor`
 - `GML: Simplify Selected Expression`
 - `GML: Generate Scene Notes`
 - `GML: Analyze State Machine`
+- `GML: Open Scene Flow View`
 - `GML: Open Project Map`
 - `GML: Rebuild Project Index`
 - `GML: Go To Resource`
 - `GML: Export Dialogue CSV`
+- `GML: Preview Safe Cleanup Fixes`
+- `GML: Apply Safe Cleanup Fixes`
+- `GML: Make This Code Easier To Read`
+- `GML: Explain This File`
+- `GML: Report Formatter Bug`
+- `GML: Installation Doctor`
+- `GML: Open Object Event Map`
+- `GML: Open Cutscene Timeline`
+- `GML: Preview State Enum`
+- `GML: Preview Resource Rename`
+- `GML: Open Globals Report`
+- `GML: Minimize Formatter Bug`
 
 ## Quality Gates
 
@@ -209,6 +273,8 @@ pnpm snapshot:test chessworld
 pnpm snapshot:update chessworld
 pnpm debug-format /path/to/file.gml
 pnpm playground
+pnpm public-fixtures:test
+pnpm test:extension-host
 ```
 
 `pnpm check` is the CI-style dry run. It exits non-zero if files would change or if parsing, safety,
@@ -231,13 +297,18 @@ idempotency checks.
 `pnpm analyze` runs the smart analyzer over one file or a folder and reports confidence, findings,
 state machines, dialogue cases, magic numbers, suspicious names, and repeated expressions.
 
-`pnpm project-index` reads `.yyp`, `.yy`, and `.gml` files and reports resources, symbols, resource
-references, and unresolved resource references.
+`pnpm project-index` reads `.yyp`, `.yy`, and `.gml` files and reports resources, symbols, rooms,
+resource references, inferred types, resource usage, type mismatches, and unresolved resource
+references.
 
 `pnpm dialogue-export` writes dialogue analysis as CSV.
 
 `pnpm simplify-expression` runs the same expression simplifier used by the VS Code command/code
 action.
+
+`pnpm public-fixtures:test` runs corpus, analyzer, and project-index checks against the public
+fixtures in `public-fixtures/`, including a tiny room/object/sprite project with an intentional
+resource typo.
 
 ## Smart Analysis
 
@@ -252,6 +323,7 @@ Current analysis features:
 - magic-number detection
 - constant arithmetic detection for tuning values such as `(46 / 2025)`
 - file metrics for branch/condition score, nesting, function count, code lines, and comment lines
+- per-line branch contributors so reports can show which exact condition or case caused the score
 - TODO/FIXME/BUG/HACK/NOTE comment detection
 - asset-reference extraction for common sprite, sound, object, room, path, font, and timeline usages
 - suspicious-name detection such as `chioces` -> `choices`
@@ -263,6 +335,8 @@ Current analysis features:
 - dialogue checks for `LEN`, `text`, `face`, `choices`, `WN`, missing language branches, and empty
   language branches
 - scene notes generated from switch-case comments
+- beginner-friendly explanations for warnings, including what happened, why it matters, and what to
+  do next
 - GameMaker resource index from `.yy` and `.yyp` files
 
 ## Project Intelligence
@@ -276,7 +350,10 @@ The extension builds a lightweight project index from workspace files. It powers
 - go-to-definition for indexed resources and symbols
 - find-references for resource usage in common calls
 - unresolved-resource diagnostics
+- likely-resource suggestions for unresolved resource names
 - a project-map webview with resource/reference counts
+- Project Doctor for formatting confidence, missing resources, branchy lines, and beginner-friendly
+  next steps
 - dialogue CSV export for translation review
 
 Smart expression tools can:
@@ -286,7 +363,17 @@ Smart expression tools can:
 - simplify double negation
 - convert `x - -1` into `x + 1`
 - detect repeated factors and suggest `sqr(...)` or local extraction
-- explain expression shape and detected patterns
+- explain expression shape, detected patterns, plain-English meaning, and a fully parenthesized form
+
+## Marketplace Checklist
+
+For Marketplace releases, the preferred public story is:
+
+- safe formatting through parser, AST, comment, and string checks
+- beginner-friendly diagnostics with quick fixes and explanations
+- GameMaker project awareness for `.yyp`, `.yy`, resources, scripts, and events
+- scene-flow tooling for `switch (state)` / `switch (fase)` cutscene code
+- public fixtures and extension-host smoke tests for clone-and-run confidence
 
 ## Library API
 

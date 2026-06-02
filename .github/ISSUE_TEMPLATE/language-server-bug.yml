@@ -1,0 +1,38 @@
+name: Language server bug
+description: Report broken completions, hovers, diagnostics, rename, symbols, or highlighting.
+title: "fix(lsp): "
+labels:
+  - language-server
+  - bug
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What went wrong?
+      description: Tell us what VS Code showed and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: GML snippet
+      render: gml
+  - type: input
+    id: command
+    attributes:
+      label: Feature affected
+      placeholder: "completion, hover, diagnostic, rename, symbols, semantic tokens"
+  - type: input
+    id: vscode
+    attributes:
+      label: VS Code version and OS
+      placeholder: "VS Code 1.90.0 on Windows 11"
+    validations:
+      required: true
+  - type: input
+    id: extension
+    attributes:
+      label: GameMaker Toolkit version
+      placeholder: "0.9.4"
+    validations:
+      required: true

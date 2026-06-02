@@ -513,6 +513,8 @@ async function format(){
 }
 
 async function findGmlFiles(root) {
+  const rootInfo = await stat(root);
+  if (rootInfo.isFile()) return root.toLowerCase().endsWith(".gml") ? [root] : [];
   const entries = await readdir(root);
   const files = [];
   for (const entry of entries) {
@@ -526,6 +528,10 @@ async function findGmlFiles(root) {
 }
 
 async function findProjectFiles(root) {
+  const rootInfo = await stat(root);
+  if (rootInfo.isFile()) {
+    return /\.(?:gml|yy|yyp)$/i.test(root) ? [root] : [];
+  }
   const entries = await readdir(root);
   const files = [];
   for (const entry of entries) {

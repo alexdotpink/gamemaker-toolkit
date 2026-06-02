@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.1
+
+- Fixed default comment-trivia safety so harmless comment reordering no longer blocks formatting
+  when every comment and string literal is still preserved.
+- Kept strict comment order and anchor checks available through
+  `gmlFormatter.safety: "trivia-strict"`.
+- Fixed `pnpm check path/to/file.gml` and related project-file discovery commands for single-file
+  inputs.
+- Removed duplicate extension-host diagnostics now that the bundled language server owns live
+  analyzer diagnostics.
+
 ## 0.9.0
 
 - Renamed the extension to GameMaker Toolkit for public release.

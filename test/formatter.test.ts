@@ -395,6 +395,17 @@ test("compares trivia while ignoring comments inside strings and strings inside 
   assert.equal(compareTrivia(left, 'text = "// nope";\n').ok, false);
 });
 
+test("default trivia safety preserves comments without requiring identical comment order", () => {
+  const left = "case 1: // first\n    run();\ncase 2: // second\n    stop();\n";
+  const reordered = "case 2: // second\n    stop();\ncase 1: // first\n    run();\n";
+  assert.equal(compareTrivia(left, reordered).ok, true);
+  assert.equal(compareTrivia(left, reordered, true).ok, false);
+  assert.equal(
+    compareTrivia(left, "case 1: // first\n    run();\ncase 2:\n    stop();\n").ok,
+    false,
+  );
+});
+
 test("builds a GameMaker project index with resources, symbols, and unresolved references", () => {
   const index = buildGmlProjectIndex("/project", [
     {

@@ -52,7 +52,6 @@ export function activate(context: vscode.ExtensionContext): void {
   const projectDiagnostics = vscode.languages.createDiagnosticCollection("gmlProject");
   const output = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
-  const diagnosticTimers = new Map<string, NodeJS.Timeout>();
   const projectIndexState: { index?: GmlProjectIndex; builtAt?: number } = {};
   statusBar.command = "gmlFormatter.diagnoseSetup";
   statusBar.tooltip = PRODUCT_NAME;
@@ -335,7 +334,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const validateActiveDocument = vscode.window.onDidChangeActiveTextEditor(async (editor) => {
     if (editor && isSupportedGmlDocument(editor.document)) {
-      scheduleDiagnostics(editor.document, diagnostics, diagnosticTimers);
       updateStatusBar(editor.document, statusBar);
     } else {
       statusBar.hide();
@@ -343,7 +341,6 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   const validateChangedDocument = vscode.workspace.onDidChangeTextDocument(async (event) => {
     if (isSupportedGmlDocument(event.document)) {
-      scheduleDiagnostics(event.document, diagnostics, diagnosticTimers);
       updateStatusBar(event.document, statusBar);
     }
   });
@@ -352,7 +349,6 @@ export function activate(context: vscode.ExtensionContext): void {
     isSupportedGmlDocument(vscode.window.activeTextEditor.document)
   ) {
     updateStatusBar(vscode.window.activeTextEditor.document, statusBar);
-    scheduleDiagnostics(vscode.window.activeTextEditor.document, diagnostics, diagnosticTimers);
   }
   void ensureProjectIndex(projectIndexState).then((index) =>
     updateProjectDiagnostics(index, projectDiagnostics),
@@ -516,50 +512,6 @@ function getFormatterOptions(
     maxBlankLines: config.get("maxBlankLines", 2),
     readableSpacing: config.get("readableSpacing", true),
   };
-}
-
-async function updateDiagnostics(
-  document: vscode.TextDocument,
-  diagnostics: vscode.DiagnosticCollection,
-): Promise<void> {
-  const result = await formatGmlDocument(document.getText());
-  const analysis = await analyzeGmlSource(document.getText(), getAnalysisOptions(document));
-  setDiagnostics(document, diagnostics, [
-    ...result.parserDiagnostics.map((diagnostic) => ({
-      line: diagnostic.line,
-      column: diagnostic.column,
-      message: diagnostic.message,
-      severity: vscode.DiagnosticSeverity.Warning,
-    })),
-    ...analysis.findings.map((finding) => ({
-      line: finding.line,
-      column: finding.column,
-      message: finding.message,
-      severity:
-        finding.severity === "error"
-          ? vscode.DiagnosticSeverity.Error
-          : finding.severity === "warning"
-            ? vscode.DiagnosticSeverity.Warning
-            : vscode.DiagnosticSeverity.Information,
-    })),
-  ]);
-}
-
-function scheduleDiagnostics(
-  document: vscode.TextDocument,
-  diagnostics: vscode.DiagnosticCollection,
-  timers: Map<string, NodeJS.Timeout>,
-): void {
-  const key = document.uri.toString();
-  const previous = timers.get(key);
-  if (previous) clearTimeout(previous);
-  timers.set(
-    key,
-    setTimeout(() => {
-      timers.delete(key);
-      void updateDiagnostics(document, diagnostics);
-    }, 250),
-  );
 }
 
 function setDiagnostics(

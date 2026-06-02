@@ -171,12 +171,21 @@ export function compareTrivia(
   const formattedComments = collectTriviaComments(formatted);
   const originalStrings = collectTriviaStrings(original);
   const formattedStrings = collectTriviaStrings(formatted);
-  compareOrderedValues(
-    diagnostics,
-    "comment",
-    originalComments.map((comment) => comment.normalizedText),
-    formattedComments.map((comment) => comment.normalizedText),
-  );
+  if (strictAnchors) {
+    compareOrderedValues(
+      diagnostics,
+      "comment",
+      originalComments.map((comment) => comment.normalizedText),
+      formattedComments.map((comment) => comment.normalizedText),
+    );
+  } else {
+    compareMultisetValues(
+      diagnostics,
+      "comment",
+      originalComments.map((comment) => comment.normalizedText),
+      formattedComments.map((comment) => comment.normalizedText),
+    );
+  }
   compareOrderedValues(
     diagnostics,
     "string literal",
@@ -220,4 +229,30 @@ function compareOrderedValues(
     );
     break;
   }
+}
+
+function compareMultisetValues(
+  diagnostics: string[],
+  label: string,
+  left: string[],
+  right: string[],
+): void {
+  if (left.length !== right.length) {
+    diagnostics.push(`${label} count changed: ${left.length} -> ${right.length}`);
+  }
+  const leftCounts = countValues(left);
+  const rightCounts = countValues(right);
+  for (const value of new Set([...leftCounts.keys(), ...rightCounts.keys()])) {
+    const leftCount = leftCounts.get(value) ?? 0;
+    const rightCount = rightCounts.get(value) ?? 0;
+    if (leftCount === rightCount) continue;
+    diagnostics.push(`${label} mismatch: ${value} count ${leftCount} -> ${rightCount}`);
+    break;
+  }
+}
+
+function countValues(values: string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return counts;
 }

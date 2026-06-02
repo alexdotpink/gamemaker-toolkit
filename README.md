@@ -137,6 +137,9 @@ git push origin v0.9.0
 The release workflow runs the same `pnpm package:check` gate before attaching the `.vsix` file to
 the GitHub release.
 
+If the repository has `VSCE_PAT` and `OVSX_PAT` secrets configured, the release workflow also
+publishes the same VSIX to the VS Code Marketplace and Open VSX.
+
 ## Continuous Integration
 
 CI runs on Ubuntu, Windows, and macOS with Node.js 20 and 22. It checks formatting, tests, fixtures,

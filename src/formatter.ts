@@ -9,7 +9,7 @@ import {
   summarizeGmlAst,
   type FormatterGmlAst,
 } from "./ast";
-import { compareTrivia } from "./trivia";
+import { collectTriviaComments, compareTrivia } from "./trivia";
 
 export interface GmlFormatOptions {
   indentSize?: number;
@@ -318,7 +318,8 @@ export async function formatGmlDocument(
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
   const normalized = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const printer = new CstPrinter(normalized, parsed, settings);
-  const formatted = printer.print().join(newline) + (normalized.endsWith("\n") ? newline : "");
+  let formatted = printer.print().join(newline) + (normalized.endsWith("\n") ? newline : "");
+  formatted = restoreMissingLineComments(source, formatted, newline);
 
   const reparsed = await parseWithBscotch(formatted);
   const reparseDiagnostics = collectParseDiagnostics(reparsed);
@@ -538,6 +539,124 @@ export function collectComments(source: string): CommentTrivia[] {
   }
 
   return comments;
+}
+
+function restoreMissingLineComments(source: string, formatted: string, newline: string): string {
+  const originalComments = collectTriviaComments(source);
+  const formattedComments = collectTriviaComments(formatted);
+  const missing = missingLineComments(originalComments, formattedComments);
+  if (missing.length === 0) {
+    return formatted;
+  }
+
+  const lines = formatted.split(/\r?\n/);
+  const usedLineIndexes = new Set<number>();
+  for (const comment of missing) {
+    const normalizedComment = normalizeLineCommentText(comment.normalizedText);
+    const anchor = normalizeCommentAnchor(comment.codeBeforeOnLine);
+    const lineIndex = anchor
+      ? findFormattedCommentAnchorLine(lines, anchor, usedLineIndexes)
+      : undefined;
+
+    if (lineIndex !== undefined) {
+      lines[lineIndex] = `${stripTrailingWhitespace(lines[lineIndex])} ${normalizedComment}`;
+      usedLineIndexes.add(lineIndex);
+      continue;
+    }
+
+    const fallbackIndex = Math.min(Math.max(comment.line - 1, 0), Math.max(lines.length - 1, 0));
+    const indent = lines[fallbackIndex]?.match(/^\s*/)?.[0] ?? "";
+    lines.splice(fallbackIndex, 0, `${indent}${normalizedComment}`);
+    usedLineIndexes.add(fallbackIndex);
+  }
+
+  return lines.join(newline);
+}
+
+function missingLineComments(
+  original: ReturnType<typeof collectTriviaComments>,
+  formatted: ReturnType<typeof collectTriviaComments>,
+): ReturnType<typeof collectTriviaComments> {
+  const formattedCounts = new Map<string, number>();
+  for (const comment of formatted) {
+    formattedCounts.set(
+      comment.normalizedText,
+      (formattedCounts.get(comment.normalizedText) ?? 0) + 1,
+    );
+  }
+
+  const missing: ReturnType<typeof collectTriviaComments> = [];
+  for (const comment of original) {
+    const remaining = formattedCounts.get(comment.normalizedText) ?? 0;
+    if (remaining > 0) {
+      formattedCounts.set(comment.normalizedText, remaining - 1);
+      continue;
+    }
+    if (comment.kind === "line") {
+      missing.push(comment);
+    }
+  }
+  return missing;
+}
+
+function findFormattedCommentAnchorLine(
+  lines: string[],
+  normalizedAnchor: string,
+  usedLineIndexes: Set<number>,
+): number | undefined {
+  for (let index = 0; index < lines.length; index += 1) {
+    if (usedLineIndexes.has(index) || findLineCommentStart(lines[index]) !== undefined) {
+      continue;
+    }
+    if (normalizeCommentAnchor(lines[index].trim()) === normalizedAnchor) {
+      return index;
+    }
+  }
+  for (let index = 0; index < lines.length; index += 1) {
+    if (usedLineIndexes.has(index) || findLineCommentStart(lines[index]) !== undefined) {
+      continue;
+    }
+    const candidate = normalizeCommentAnchor(lines[index].trim());
+    if (candidate.startsWith(normalizedAnchor) || normalizedAnchor.startsWith(candidate)) {
+      return index;
+    }
+  }
+  return undefined;
+}
+
+function normalizeCommentAnchor(text: string): string {
+  return stripLineComment(text).replace(/\s+/g, "").replace(/;$/, "").toLowerCase();
+}
+
+function stripLineComment(text: string): string {
+  const index = findLineCommentStart(text);
+  return (index === undefined ? text : text.slice(0, index)).trim();
+}
+
+function stripTrailingWhitespace(text: string): string {
+  return text.replace(/[ \t]+$/g, "");
+}
+
+function findLineCommentStart(text: string): number | undefined {
+  let quote: '"' | "'" | "`" | undefined;
+  let escaped = false;
+  for (let index = 0; index < text.length - 1; index += 1) {
+    const char = text[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = undefined;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      continue;
+    }
+    if (char === "/" && text[index + 1] === "/") {
+      return index;
+    }
+  }
+  return undefined;
 }
 
 export function collectCommentAttachments(source: string, tokens: GmlToken[]): CommentAttachment[] {

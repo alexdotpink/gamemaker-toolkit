@@ -26,7 +26,7 @@ Alternative install options:
 To install a downloaded VSIX manually:
 
 ```sh
-code --install-extension path/to/gamemaker-toolkit-0.9.1.vsix --force
+code --install-extension path/to/gamemaker-toolkit-0.9.2.vsix --force
 ```
 
 ## Features
@@ -137,7 +137,7 @@ Package a local VSIX and install it into VS Code:
 
 ```sh
 pnpm package
-code --install-extension gamemaker-toolkit-0.9.1.vsix --force
+code --install-extension gamemaker-toolkit-0.9.2.vsix --force
 ```
 
 On Windows, run the same commands from PowerShell, Command Prompt, or Git Bash after installing
@@ -149,8 +149,8 @@ syntax.
 Tagged releases create a VSIX automatically through GitHub Actions:
 
 ```sh
-git tag v0.9.1
-git push origin v0.9.1
+git tag v0.9.2
+git push origin v0.9.2
 ```
 
 The release workflow runs the same `pnpm package:check` gate before attaching the `.vsix` file to

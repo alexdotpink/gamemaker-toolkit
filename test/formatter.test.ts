@@ -406,6 +406,59 @@ test("default trivia safety preserves comments without requiring identical comme
   );
 });
 
+test("preserves switch case line comments across safety checks", async () => {
+  const input = [
+    "switch(fase){",
+    "    case 1: //First time loading in ",
+    "        if (count >= 30){ ",
+    "            fase += 1  ",
+    "        }else count +=1;",
+    "        break;",
+    "    case 6: //pauses then sends Swami back",
+    "        break;",
+    "}",
+  ].join("\n");
+
+  const result = await formatGmlDocument(input);
+  assert.deepEqual(result.parserErrors, []);
+  assert.deepEqual(result.safetyErrors, []);
+  assert.match(result.formatted, /case 1: \/\/ First time loading in/);
+  assert.match(result.formatted, /case 6: \/\/ pauses then sends Swami back/);
+});
+
+test("preserves chained switch case comments", async () => {
+  const input = [
+    "switch(fase){",
+    "    case 12: case 13: case 14: //syncs camera movement to Swami",
+    "        Swami_obj.x = Tabris_X;",
+    "        break;",
+    "}",
+  ].join("\n");
+
+  const result = await formatGmlDocument(input);
+  assert.deepEqual(result.parserErrors, []);
+  assert.deepEqual(result.safetyErrors, []);
+  assert.match(result.formatted, /\/\/ syncs camera movement to Swami/);
+});
+
+test("analysis does not surface formatter safety as editor problems", async () => {
+  const input = [
+    "switch(fase){",
+    "    case 1: //First time loading in ",
+    "        if (count >= 30){ ",
+    "            fase += 1  ",
+    "        }else count +=1;",
+    "        break;",
+    "}",
+  ].join("\n");
+
+  const report = await analyzeGmlSource(input);
+  assert.equal(
+    report.findings.some((finding) => finding.code === "formatter-safety"),
+    false,
+  );
+});
+
 test("builds a GameMaker project index with resources, symbols, and unresolved references", () => {
   const index = buildGmlProjectIndex("/project", [
     {

@@ -159,16 +159,6 @@ export async function analyzeGmlSource(
       })),
     );
   }
-  if (formatResult.safetyErrors.length > 0) {
-    findings.push({
-      severity: "error",
-      code: "formatter-safety",
-      message: formatResult.safetyDiagnostics[0] ?? formatResult.safetyErrors[0],
-      line: 1,
-      column: 1,
-    });
-  }
-
   const lines = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
   const metrics = calculateMetrics(lines);
   findings.push(...metricFindings(metrics));

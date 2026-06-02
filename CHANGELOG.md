@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.2
+
+- Added a formatter comment-preservation fallback that re-attaches missing line comments before the
+  AST/trivia safety gate runs, covering switch-case comments, chained case labels, and other
+  formatter rewrites that move code around comments.
+- Stopped surfacing internal formatter safety failures as live editor Problems from the language
+  server analyzer. Formatting commands still skip unsafe edits, but normal editing diagnostics no
+  longer show scary formatter-safety errors for intentionally skipped files.
+- Added regressions for Chessworld-style `case 1: //First time loading in` comments and chained
+  `case 12: case 13: case 14: //...` comments.
+
 ## 0.9.1
 
 - Fixed default comment-trivia safety so harmless comment reordering no longer blocks formatting

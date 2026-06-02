@@ -1,0 +1,1194 @@
+import * as vscode from "vscode";
+import * as path from "node:path";
+import {
+  LanguageClient,
+  TransportKind,
+  type ServerOptions,
+  type LanguageClientOptions,
+} from "vscode-languageclient/node";
+import {
+  formatGmlDocument,
+  formatGmlLexicalFallback,
+  getGmlFormatterDebugInfo,
+  type GmlFormatOptions,
+} from "./formatter";
+import {
+  analyzeExpressionAtText,
+  analyzeGmlSource,
+  simplifyExpressionText,
+  type GmlAnalysisReport,
+  type GmlProjectRules,
+} from "./analysis";
+import { buildGmlProjectIndex, type GmlProjectFile, type GmlProjectIndex } from "./projectIndex";
+
+const EXTENSION_ID = "alexdotpink.gamemaker-toolkit";
+const PRODUCT_NAME = "GameMaker Toolkit";
+const OUTPUT_CHANNEL_NAME = "GameMaker Toolkit";
+
+let languageClient: LanguageClient | undefined;
+
+const GML_DOCUMENT_SELECTORS: vscode.DocumentFilter[] = [
+  { pattern: "**/*.gml" },
+  { pattern: "**/*.GML" },
+  { language: "*", pattern: "**/*.gml" },
+  { language: "*", pattern: "**/*.GML" },
+  { scheme: "file", pattern: "**/*.gml" },
+  { scheme: "file", pattern: "**/*.GML" },
+  { scheme: "untitled", pattern: "**/*.gml" },
+  { scheme: "untitled", pattern: "**/*.GML" },
+  { language: "gml", scheme: "file" },
+  { language: "gml", scheme: "untitled" },
+  { language: "gamemaker", scheme: "file" },
+  { language: "gamemaker", scheme: "untitled" },
+  { language: "gamemaker-language", scheme: "file" },
+  { language: "gamemaker-language", scheme: "untitled" },
+  { language: "gml-gamemaker", scheme: "file" },
+  { language: "gml-gamemaker", scheme: "untitled" },
+];
+
+export function activate(context: vscode.ExtensionContext): void {
+  languageClient = startLanguageServer(context);
+  const diagnostics = vscode.languages.createDiagnosticCollection("gmlFormatter");
+  const projectDiagnostics = vscode.languages.createDiagnosticCollection("gmlProject");
+  const output = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
+  const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
+  const diagnosticTimers = new Map<string, NodeJS.Timeout>();
+  const projectIndexState: { index?: GmlProjectIndex; builtAt?: number } = {};
+  statusBar.command = "gmlFormatter.diagnoseSetup";
+  statusBar.tooltip = PRODUCT_NAME;
+  const provider = vscode.languages.registerDocumentFormattingEditProvider(GML_DOCUMENT_SELECTORS, {
+    async provideDocumentFormattingEdits(document, options) {
+      return createFormattingEdits(document, options, diagnostics, output, {
+        showParserErrors: true,
+      });
+    },
+  });
+  const rangeProvider = vscode.languages.registerDocumentRangeFormattingEditProvider(
+    GML_DOCUMENT_SELECTORS,
+    {
+      async provideDocumentRangeFormattingEdits(document, range, options) {
+        return createRangeFormattingEdits(document, range, options, diagnostics, output, {
+          showParserErrors: true,
+        });
+      },
+    },
+  );
+
+  const command = vscode.commands.registerTextEditorCommand(
+    "gmlFormatter.formatDocument",
+    async (editor) => {
+      if (!isSupportedGmlDocument(editor.document)) {
+        await vscode.window.showWarningMessage(
+          `${PRODUCT_NAME} can only format .gml documents. Current language: ${editor.document.languageId}.`,
+        );
+        return;
+      }
+
+      const edit = new vscode.WorkspaceEdit();
+      for (const textEdit of await createFormattingEdits(
+        editor.document,
+        editor.options,
+        diagnostics,
+        output,
+        { showParserErrors: true },
+      )) {
+        edit.replace(editor.document.uri, textEdit.range, textEdit.newText);
+      }
+      await vscode.workspace.applyEdit(edit);
+    },
+  );
+  const debugCommand = vscode.commands.registerTextEditorCommand(
+    "gmlFormatter.showDebugInfo",
+    async (editor) => {
+      const debugInfo = await getGmlFormatterDebugInfo(editor.document.getText());
+      const lines = [
+        `${PRODUCT_NAME} Debug Info`,
+        "",
+        `Extension: ${EXTENSION_ID}`,
+        `Document: ${editor.document.fileName}`,
+        `Language ID: ${editor.document.languageId}`,
+        `Root CST node: ${debugInfo.rootNode}`,
+        `Top-level statements: ${debugInfo.topLevelStatements}`,
+        `Parser tokens: ${debugInfo.tokenCount}`,
+        `Parser errors: ${debugInfo.parserErrors.length}`,
+        `Comments: ${debugInfo.comments.length}`,
+        `Comment attachments: ${debugInfo.commentAttachments.length}`,
+        `Semantic signature tokens: ${debugInfo.semanticSignature.length}`,
+        "",
+      ];
+      if (debugInfo.parserErrors.length > 0) {
+        lines.push(
+          "Errors:",
+          ...debugInfo.parserDiagnostics.map(
+            (error) => `- ${error.line}:${error.column} ${error.message}`,
+          ),
+          "",
+        );
+      }
+      if (debugInfo.commentAttachments.length > 0) {
+        lines.push(
+          "Comment Attachments:",
+          ...debugInfo.commentAttachments.map(
+            (comment) => `- ${comment.line} ${comment.attachment} ${comment.text}`,
+          ),
+          "",
+        );
+      }
+      lines.push("Normalized AST:", ...debugInfo.normalizedAstSummary);
+      const document = await vscode.workspace.openTextDocument({
+        language: "plaintext",
+        content: lines.join("\n"),
+      });
+      await vscode.window.showTextDocument(document, { preview: true });
+    },
+  );
+  const lexicalFallbackCommand = vscode.commands.registerTextEditorCommand(
+    "gmlFormatter.formatWithLexicalFallback",
+    async (editor) => {
+      const answer = await vscode.window.showWarningMessage(
+        "Lexical fallback formatting does not fully understand GML syntax. Use it only for damaged snippets.",
+        { modal: true },
+        "Format Anyway",
+      );
+      if (answer !== "Format Anyway") return;
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        editor.document.uri,
+        new vscode.Range(
+          editor.document.positionAt(0),
+          editor.document.positionAt(editor.document.getText().length),
+        ),
+        formatGmlLexicalFallback(
+          editor.document.getText(),
+          getFormatterOptions(editor.document, editor.options),
+        ),
+      );
+      await vscode.workspace.applyEdit(edit);
+    },
+  );
+  const defaultFormatterCommand = vscode.commands.registerTextEditorCommand(
+    "gmlFormatter.configureDefaultFormatter",
+    async (editor) => {
+      const languageId = editor.document.languageId || "gml";
+      const target = vscode.workspace.workspaceFolders?.length
+        ? vscode.ConfigurationTarget.Workspace
+        : vscode.ConfigurationTarget.Global;
+      await vscode.workspace
+        .getConfiguration()
+        .update(`[${languageId}]`, { "editor.defaultFormatter": EXTENSION_ID }, target);
+      await vscode.window.showInformationMessage(
+        `${PRODUCT_NAME} is now the default formatter for language ID "${languageId}".`,
+      );
+    },
+  );
+  const diagnoseCommand = vscode.commands.registerTextEditorCommand(
+    "gmlFormatter.diagnoseSetup",
+    async (editor) => {
+      await showSetupDiagnostics(editor.document, output);
+    },
+  );
+  const explainSkippedCommand = vscode.commands.registerTextEditorCommand(
+    "gmlFormatter.explainSkippedFormat",
+    async (editor) => {
+      await explainFormattingResult(editor.document, editor.options, output);
+    },
+  );
+  const diffCommand = vscode.commands.registerTextEditorCommand(
+    "gmlFormatter.formatAndShowDiff",
+    async (editor) => {
+      await showFormattedDiff(editor.document, editor.options, output);
+    },
+  );
+  const dryRunCommand = vscode.commands.registerCommand(
+    "gmlFormatter.workspaceDryRun",
+    async () => {
+      await runWorkspaceDryRun(output);
+    },
+  );
+  const playgroundCommand = vscode.commands.registerCommand(
+    "gmlFormatter.openPlayground",
+    async () => {
+      await openPlayground(context, output);
+    },
+  );
+  const analyzeCommand = vscode.commands.registerTextEditorCommand(
+    "gmlFormatter.analyzeCurrentFile",
+    async (editor) => {
+      await showAnalysisReport(editor.document);
+    },
+  );
+  const explainExpressionCommand = vscode.commands.registerTextEditorCommand(
+    "gmlFormatter.explainExpression",
+    async (editor) => {
+      await showExpressionExplanation(editor);
+    },
+  );
+  const simplifyExpressionCommand = vscode.commands.registerTextEditorCommand(
+    "gmlFormatter.simplifyExpression",
+    async (editor) => {
+      await simplifySelectedExpression(editor);
+    },
+  );
+  const sceneNotesCommand = vscode.commands.registerTextEditorCommand(
+    "gmlFormatter.generateSceneNotes",
+    async (editor) => {
+      const report = await analyzeGmlSource(
+        editor.document.getText(),
+        getAnalysisOptions(editor.document),
+      );
+      const document = await vscode.workspace.openTextDocument({
+        language: "markdown",
+        content: report.sceneNotesMarkdown,
+      });
+      await vscode.window.showTextDocument(document, { preview: true });
+    },
+  );
+  const stateMachineCommand = vscode.commands.registerTextEditorCommand(
+    "gmlFormatter.analyzeStateMachine",
+    async (editor) => {
+      const report = await analyzeGmlSource(
+        editor.document.getText(),
+        getAnalysisOptions(editor.document),
+      );
+      const content = report.stateMachines.length
+        ? report.stateMachines
+            .map((machine) =>
+              [
+                `# State Machine: ${machine.variable}`,
+                "",
+                "```mermaid",
+                machine.mermaid,
+                "```",
+                "",
+                ...machine.warnings.map((warning) => `- ${warning}`),
+              ].join("\n"),
+            )
+            .join("\n\n")
+        : "No obvious state machine switch found.";
+      const document = await vscode.workspace.openTextDocument({ language: "markdown", content });
+      await vscode.window.showTextDocument(document, { preview: true });
+    },
+  );
+  const projectMapCommand = vscode.commands.registerCommand(
+    "gmlFormatter.openProjectMap",
+    async () => {
+      await openProjectMap(context, projectIndexState);
+    },
+  );
+  const rebuildProjectIndexCommand = vscode.commands.registerCommand(
+    "gmlFormatter.rebuildProjectIndex",
+    async () => {
+      projectIndexState.index = await buildWorkspaceProjectIndex();
+      projectIndexState.builtAt = Date.now();
+      await updateProjectDiagnostics(projectIndexState.index, projectDiagnostics);
+      await vscode.window.showInformationMessage(
+        `GML project index rebuilt: ${projectIndexState.index.resources.length} resources, ${projectIndexState.index.symbols.length} symbols.`,
+      );
+    },
+  );
+  const goToResourceCommand = vscode.commands.registerCommand(
+    "gmlFormatter.goToResource",
+    async () => {
+      const index = await ensureProjectIndex(projectIndexState);
+      const picked = await vscode.window.showQuickPick(
+        index.resources.map((resource) => ({
+          label: resource.name,
+          description: resource.type,
+          detail: resource.file,
+          resource,
+        })),
+        { placeHolder: "Open GameMaker resource" },
+      );
+      if (!picked) return;
+      const document = await vscode.workspace.openTextDocument(
+        vscode.Uri.file(picked.resource.file),
+      );
+      await vscode.window.showTextDocument(document, { preview: true });
+    },
+  );
+  const exportDialogueCommand = vscode.commands.registerTextEditorCommand(
+    "gmlFormatter.exportDialogueCsv",
+    async (editor) => {
+      const report = await analyzeGmlSource(
+        editor.document.getText(),
+        getAnalysisOptions(editor.document),
+      );
+      const csv = dialogueCsv(report);
+      const document = await vscode.workspace.openTextDocument({ language: "csv", content: csv });
+      await vscode.window.showTextDocument(document, { preview: true });
+    },
+  );
+  const codeActionsProvider = vscode.languages.registerCodeActionsProvider(
+    GML_DOCUMENT_SELECTORS,
+    {
+      provideCodeActions(document, range) {
+        return createSmartCodeActions(document, range);
+      },
+    },
+    {
+      providedCodeActionKinds: [
+        vscode.CodeActionKind.RefactorRewrite,
+        vscode.CodeActionKind.QuickFix,
+      ],
+    },
+  );
+
+  const validateActiveDocument = vscode.window.onDidChangeActiveTextEditor(async (editor) => {
+    if (editor && isSupportedGmlDocument(editor.document)) {
+      scheduleDiagnostics(editor.document, diagnostics, diagnosticTimers);
+      updateStatusBar(editor.document, statusBar);
+    } else {
+      statusBar.hide();
+    }
+  });
+  const validateChangedDocument = vscode.workspace.onDidChangeTextDocument(async (event) => {
+    if (isSupportedGmlDocument(event.document)) {
+      scheduleDiagnostics(event.document, diagnostics, diagnosticTimers);
+      updateStatusBar(event.document, statusBar);
+    }
+  });
+  if (
+    vscode.window.activeTextEditor &&
+    isSupportedGmlDocument(vscode.window.activeTextEditor.document)
+  ) {
+    updateStatusBar(vscode.window.activeTextEditor.document, statusBar);
+    scheduleDiagnostics(vscode.window.activeTextEditor.document, diagnostics, diagnosticTimers);
+  }
+  void ensureProjectIndex(projectIndexState).then((index) =>
+    updateProjectDiagnostics(index, projectDiagnostics),
+  );
+
+  context.subscriptions.push(
+    diagnostics,
+    projectDiagnostics,
+    output,
+    statusBar,
+    provider,
+    rangeProvider,
+    command,
+    lexicalFallbackCommand,
+    debugCommand,
+    defaultFormatterCommand,
+    diagnoseCommand,
+    explainSkippedCommand,
+    diffCommand,
+    dryRunCommand,
+    playgroundCommand,
+    analyzeCommand,
+    explainExpressionCommand,
+    simplifyExpressionCommand,
+    sceneNotesCommand,
+    stateMachineCommand,
+    projectMapCommand,
+    rebuildProjectIndexCommand,
+    goToResourceCommand,
+    exportDialogueCommand,
+    codeActionsProvider,
+    validateActiveDocument,
+    validateChangedDocument,
+  );
+}
+
+export function deactivate(): void {
+  void languageClient?.stop();
+}
+
+function startLanguageServer(context: vscode.ExtensionContext): LanguageClient {
+  const serverModule = context.asAbsolutePath(path.join("dist", "server.js"));
+  const serverOptions: ServerOptions = {
+    run: { module: serverModule, transport: TransportKind.ipc },
+    debug: { module: serverModule, transport: TransportKind.ipc },
+  };
+  const clientOptions: LanguageClientOptions = {
+    documentSelector: ["gml", "gamemaker", "gamemaker-language", "gml-gamemaker"],
+    synchronize: {
+      fileEvents: vscode.workspace.createFileSystemWatcher("**/*.{gml,yy,yyp}"),
+    },
+  };
+  const client = new LanguageClient("gamemakerToolkit", PRODUCT_NAME, serverOptions, clientOptions);
+  void client.start();
+  context.subscriptions.push(client);
+  return client;
+}
+
+function createFormattingEdits(
+  document: vscode.TextDocument,
+  options: vscode.FormattingOptions | vscode.TextEditorOptions,
+  diagnostics: vscode.DiagnosticCollection,
+  output: vscode.OutputChannel,
+  commandOptions: {
+    showParserErrors: boolean;
+  },
+): Thenable<vscode.TextEdit[]> {
+  return createFormattingEditsAsync(document, options, diagnostics, output, commandOptions);
+}
+
+async function createFormattingEditsAsync(
+  document: vscode.TextDocument,
+  options: vscode.FormattingOptions | vscode.TextEditorOptions,
+  diagnostics: vscode.DiagnosticCollection,
+  output: vscode.OutputChannel,
+  commandOptions: {
+    showParserErrors: boolean;
+  },
+): Promise<vscode.TextEdit[]> {
+  const config = vscode.workspace.getConfiguration("gmlFormatter", document.uri);
+  const formatterOptions = getFormatterOptions(document, options);
+
+  const fullRange = new vscode.Range(
+    document.positionAt(0),
+    document.positionAt(document.getText().length),
+  );
+
+  const result = await formatGmlDocument(document.getText(), formatterOptions);
+  if (result.parserErrors.length > 0) {
+    setDiagnostics(document, diagnostics, result.parserDiagnostics);
+    output.appendLine(`[skip:parse] ${document.fileName}`);
+    output.appendLine(`  ${result.parserErrors[0]}`);
+    if (commandOptions.showParserErrors) {
+      await vscode.window.showWarningMessage(
+        `${PRODUCT_NAME} skipped this file because @bscotch/gml-parser reported ${result.parserErrors.length} syntax error(s). First: ${result.parserErrors[0]}`,
+      );
+    }
+    return [];
+  }
+  if (result.safetyErrors.length > 0) {
+    output.appendLine(`[skip:safety] ${document.fileName}`);
+    for (const diagnostic of result.safetyDiagnostics) output.appendLine(`  ${diagnostic}`);
+    if (commandOptions.showParserErrors) {
+      await vscode.window.showWarningMessage(
+        `${PRODUCT_NAME} skipped this file because the safety check failed. First: ${result.safetyDiagnostics[0] ?? result.safetyErrors[0]}`,
+      );
+    }
+    return [];
+  }
+
+  diagnostics.delete(document.uri);
+  output.appendLine(
+    `[format] ${document.fileName}${result.changed ? " changed" : " already formatted"}`,
+  );
+  return [vscode.TextEdit.replace(fullRange, result.formatted)];
+}
+
+async function createRangeFormattingEdits(
+  document: vscode.TextDocument,
+  range: vscode.Range,
+  options: vscode.FormattingOptions | vscode.TextEditorOptions,
+  diagnostics: vscode.DiagnosticCollection,
+  output: vscode.OutputChannel,
+  commandOptions: {
+    showParserErrors: boolean;
+  },
+): Promise<vscode.TextEdit[]> {
+  if (range.isEmpty) {
+    return createFormattingEditsAsync(document, options, diagnostics, output, commandOptions);
+  }
+
+  const formatterOptions = getFormatterOptions(document, options);
+  const result = await formatGmlDocument(document.getText(range), {
+    ...formatterOptions,
+    mode: "snippet",
+  });
+  if (result.parserErrors.length > 0) {
+    return createFormattingEditsAsync(document, options, diagnostics, output, commandOptions);
+  }
+  return [vscode.TextEdit.replace(range, result.formatted)];
+}
+
+function getFormatterOptions(
+  document: vscode.TextDocument,
+  options: vscode.FormattingOptions | vscode.TextEditorOptions,
+): GmlFormatOptions {
+  const config = vscode.workspace.getConfiguration("gmlFormatter", document.uri);
+  const tabSize =
+    typeof options.tabSize === "number" ? options.tabSize : Number(options.tabSize) || 4;
+  const insertSpaces = typeof options.insertSpaces === "boolean" ? options.insertSpaces : true;
+  return {
+    indentSize: config.get("indentSize", tabSize),
+    useTabs: config.get("useTabs", !insertSpaces),
+    printWidth: config.get("printWidth", 100),
+    trailingCommas: config.get("trailingCommas", false),
+    multilineFunctionCalls: config.get("multilineFunctionCalls", "auto"),
+    style: config.get("style", "opinionated"),
+    safety: config.get("safety", "ast-and-trivia"),
+    mode: config.get("mode", "file"),
+    trimTrailingWhitespace: config.get("trimTrailingWhitespace", true),
+    maxBlankLines: config.get("maxBlankLines", 2),
+    readableSpacing: config.get("readableSpacing", true),
+  };
+}
+
+async function updateDiagnostics(
+  document: vscode.TextDocument,
+  diagnostics: vscode.DiagnosticCollection,
+): Promise<void> {
+  const result = await formatGmlDocument(document.getText());
+  const analysis = await analyzeGmlSource(document.getText(), getAnalysisOptions(document));
+  setDiagnostics(document, diagnostics, [
+    ...result.parserDiagnostics.map((diagnostic) => ({
+      line: diagnostic.line,
+      column: diagnostic.column,
+      message: diagnostic.message,
+      severity: vscode.DiagnosticSeverity.Warning,
+    })),
+    ...analysis.findings.map((finding) => ({
+      line: finding.line,
+      column: finding.column,
+      message: finding.message,
+      severity:
+        finding.severity === "error"
+          ? vscode.DiagnosticSeverity.Error
+          : finding.severity === "warning"
+            ? vscode.DiagnosticSeverity.Warning
+            : vscode.DiagnosticSeverity.Information,
+    })),
+  ]);
+}
+
+function scheduleDiagnostics(
+  document: vscode.TextDocument,
+  diagnostics: vscode.DiagnosticCollection,
+  timers: Map<string, NodeJS.Timeout>,
+): void {
+  const key = document.uri.toString();
+  const previous = timers.get(key);
+  if (previous) clearTimeout(previous);
+  timers.set(
+    key,
+    setTimeout(() => {
+      timers.delete(key);
+      void updateDiagnostics(document, diagnostics);
+    }, 250),
+  );
+}
+
+function setDiagnostics(
+  document: vscode.TextDocument,
+  diagnostics: vscode.DiagnosticCollection,
+  parserDiagnostics: Array<{
+    line: number;
+    column: number;
+    message: string;
+    severity?: vscode.DiagnosticSeverity;
+  }>,
+): void {
+  diagnostics.set(
+    document.uri,
+    parserDiagnostics.map((diagnostic) => {
+      const line = Math.max(0, diagnostic.line - 1);
+      const column = Math.max(0, diagnostic.column - 1);
+      return new vscode.Diagnostic(
+        new vscode.Range(line, column, line, column + 1),
+        diagnostic.message,
+        diagnostic.severity ?? vscode.DiagnosticSeverity.Warning,
+      );
+    }),
+  );
+}
+
+function isSupportedGmlDocument(document: vscode.TextDocument): boolean {
+  return (
+    document.fileName.toLowerCase().endsWith(".gml") ||
+    GML_DOCUMENT_SELECTORS.some(
+      (selector) => typeof selector === "object" && selector.language === document.languageId,
+    )
+  );
+}
+
+function updateStatusBar(document: vscode.TextDocument, statusBar: vscode.StatusBarItem): void {
+  if (!isSupportedGmlDocument(document)) {
+    statusBar.hide();
+    return;
+  }
+  const config = vscode.workspace.getConfiguration(undefined, document.uri);
+  const languageConfig = config.get<Record<string, unknown>>(`[${document.languageId}]`);
+  const defaultFormatter = languageConfig?.["editor.defaultFormatter"];
+  statusBar.text =
+    defaultFormatter === EXTENSION_ID ? `$(check) ${PRODUCT_NAME}` : `$(warning) ${PRODUCT_NAME}`;
+  statusBar.tooltip =
+    defaultFormatter === EXTENSION_ID
+      ? `${PRODUCT_NAME} is the default formatter for this language ID.`
+      : `${PRODUCT_NAME} is available, but defaultFormatter for "${document.languageId}" is ${String(defaultFormatter ?? "not set")}.`;
+  statusBar.show();
+}
+
+async function showSetupDiagnostics(
+  document: vscode.TextDocument,
+  output: vscode.OutputChannel,
+): Promise<void> {
+  const config = vscode.workspace.getConfiguration(undefined, document.uri);
+  const languageConfig = config.get<Record<string, unknown>>(`[${document.languageId}]`);
+  const defaultFormatter = languageConfig?.["editor.defaultFormatter"];
+  const formatterConfig = vscode.workspace.getConfiguration("gmlFormatter", document.uri);
+  const lines = [
+    `${PRODUCT_NAME} Setup Diagnostics`,
+    "",
+    `File: ${document.fileName}`,
+    `Language ID: ${document.languageId}`,
+    `Is .gml: ${document.fileName.toLowerCase().endsWith(".gml")}`,
+    `Supported by extension: ${isSupportedGmlDocument(document)}`,
+    `Default formatter for this language: ${String(defaultFormatter ?? "not set")}`,
+    `Expected formatter id: ${EXTENSION_ID}`,
+    `Style: ${formatterConfig.get("style", "opinionated")}`,
+    `Safety: ${formatterConfig.get("safety", "ast-and-trivia")}`,
+    `Print width: ${formatterConfig.get("printWidth", 100)}`,
+    "",
+    defaultFormatter === EXTENSION_ID
+      ? "Normal Format Document should use this extension."
+      : "Run GML: Make This The Default Formatter, then reload the VS Code window if Format Document still does not call this extension.",
+  ];
+  output.clear();
+  output.appendLine(lines.join("\n"));
+  output.show(true);
+}
+
+async function explainFormattingResult(
+  document: vscode.TextDocument,
+  options: vscode.TextEditorOptions,
+  output: vscode.OutputChannel,
+): Promise<void> {
+  const result = await formatGmlDocument(
+    document.getText(),
+    getFormatterOptions(document, options),
+  );
+  output.clear();
+  output.appendLine(`${PRODUCT_NAME} result for ${document.fileName}`);
+  if (result.parserErrors.length > 0) {
+    output.appendLine(`Skipped: parser reported ${result.parserErrors.length} error(s).`);
+    result.parserDiagnostics.forEach((diagnostic) =>
+      output.appendLine(`  ${diagnostic.line}:${diagnostic.column} ${diagnostic.message}`),
+    );
+  } else if (result.safetyErrors.length > 0) {
+    output.appendLine(`Skipped: ${result.safetyErrors.join(" ")}`);
+    result.safetyDiagnostics.forEach((diagnostic) => output.appendLine(`  ${diagnostic}`));
+  } else {
+    output.appendLine(
+      result.changed ? "Formatting would change this file." : "File is already formatted.",
+    );
+  }
+  output.show(true);
+}
+
+async function showFormattedDiff(
+  document: vscode.TextDocument,
+  options: vscode.TextEditorOptions,
+  output: vscode.OutputChannel,
+): Promise<void> {
+  const result = await formatGmlDocument(
+    document.getText(),
+    getFormatterOptions(document, options),
+  );
+  if (result.parserErrors.length || result.safetyErrors.length) {
+    await explainFormattingResult(document, options, output);
+    return;
+  }
+  const formattedDocument = await vscode.workspace.openTextDocument({
+    language: document.languageId,
+    content: result.formatted,
+  });
+  await vscode.commands.executeCommand(
+    "vscode.diff",
+    document.uri,
+    formattedDocument.uri,
+    `${PRODUCT_NAME} Diff: ${document.uri.fsPath.split(/[\\/]/).pop() ?? "document"}`,
+  );
+}
+
+async function runWorkspaceDryRun(output: vscode.OutputChannel): Promise<void> {
+  const files = await vscode.workspace.findFiles("**/*.gml", "{**/node_modules/**,**/.git/**}");
+  let changed = 0;
+  let parserFailed = 0;
+  let safetyFailed = 0;
+  output.clear();
+  output.appendLine(`${PRODUCT_NAME} workspace dry run: ${files.length} file(s)`);
+  for (const uri of files) {
+    const document = await vscode.workspace.openTextDocument(uri);
+    const result = await formatGmlDocument(
+      document.getText(),
+      getFormatterOptions(document, { tabSize: 4, insertSpaces: true }),
+    );
+    if (result.parserErrors.length) {
+      parserFailed += 1;
+      output.appendLine(`[parse] ${uri.fsPath}: ${result.parserErrors[0]}`);
+    } else if (result.safetyErrors.length) {
+      safetyFailed += 1;
+      output.appendLine(
+        `[safety] ${uri.fsPath}: ${result.safetyDiagnostics[0] ?? result.safetyErrors[0]}`,
+      );
+    } else if (result.changed) {
+      changed += 1;
+      output.appendLine(`[change] ${uri.fsPath}`);
+    }
+  }
+  output.appendLine("");
+  output.appendLine(
+    `Checked ${files.length}; would change ${changed}; parser failures ${parserFailed}; safety failures ${safetyFailed}.`,
+  );
+  output.show(true);
+}
+
+async function openPlayground(
+  context: vscode.ExtensionContext,
+  output: vscode.OutputChannel,
+): Promise<void> {
+  const panel = vscode.window.createWebviewPanel(
+    "gmlFormatterPlayground",
+    `${PRODUCT_NAME} Playground`,
+    vscode.ViewColumn.Beside,
+    { enableScripts: true },
+  );
+  const initial =
+    vscode.window.activeTextEditor?.document.getText() ?? 'if x show_debug_message("hi")';
+  panel.webview.html = playgroundHtml(initial);
+  panel.webview.onDidReceiveMessage(
+    async (message: {
+      type: string;
+      source?: string;
+      printWidth?: number;
+      style?: GmlFormatOptions["style"];
+    }) => {
+      if (message.type !== "format") return;
+      const source = message.source ?? "";
+      const result = await formatGmlDocument(source, {
+        printWidth: message.printWidth ?? 100,
+        style: message.style ?? "opinionated",
+      });
+      const debug = await getGmlFormatterDebugInfo(source);
+      const analysis = await analyzeGmlSource(source);
+      output.appendLine(
+        `[playground] parser=${result.parserErrors.length} safety=${result.safetyErrors.length} changed=${result.changed}`,
+      );
+      await panel.webview.postMessage({
+        type: "result",
+        formatted: result.formatted,
+        parserErrors: result.parserErrors,
+        safetyErrors: result.safetyErrors,
+        safetyDiagnostics: result.safetyDiagnostics,
+        ast: debug.formatterAstSummary,
+        comments: debug.commentAttachments,
+        analysis: {
+          confidence: analysis.confidence,
+          metrics: analysis.metrics,
+          findings: analysis.findings.slice(0, 30),
+          stateMachines: analysis.stateMachines.length,
+          dialogueCases: analysis.dialogueCases.length,
+          assetReferences: analysis.assetReferences.length,
+        },
+      });
+    },
+    undefined,
+    context.subscriptions,
+  );
+}
+
+function playgroundHtml(initial: string): string {
+  const escaped = JSON.stringify(initial);
+  return `<!doctype html>
+<meta charset="utf-8">
+<title>GameMaker Toolkit Playground</title>
+<style>
+body{font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;margin:0;color:#1f2933;background:#f7f8fa}
+header{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid #d8dee9;background:white}
+main{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px}
+textarea,pre{box-sizing:border-box;width:100%;height:56vh;margin:0;padding:12px;border:1px solid #c9d1dc;border-radius:6px;background:white;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;overflow:auto}
+section{min-width:0}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 12px 12px}
+button,select,input{font:inherit}
+button{padding:6px 10px}
+h3{margin:0 0 6px;font-size:13px}
+</style>
+<header>
+  <strong>GameMaker Toolkit Playground</strong>
+  <label>Style <select id="style"><option>opinionated</option><option>minimal</option><option>preserve</option><option>gameMakerStudio</option></select></label>
+  <label>Print width <input id="width" type="number" min="40" max="200" value="100"></label>
+  <button id="format">Format</button>
+</header>
+<main>
+  <section><h3>Input</h3><textarea id="input"></textarea></section>
+  <section><h3>Formatted</h3><textarea id="output" readonly></textarea></section>
+</main>
+<div class="meta">
+  <section><h3>Safety / comments</h3><pre id="status"></pre></section>
+  <section><h3>Formatter AST</h3><pre id="ast"></pre></section>
+  <section><h3>Analysis</h3><pre id="analysis"></pre></section>
+</div>
+<script>
+const vscode = acquireVsCodeApi();
+input.value = ${escaped};
+format.onclick = () => vscode.postMessage({type:'format', source: input.value, printWidth: Number(width.value), style: style.value});
+window.addEventListener('message', event => {
+  const msg = event.data;
+  if (msg.type !== 'result') return;
+  output.value = msg.formatted;
+  status.textContent = JSON.stringify({parserErrors: msg.parserErrors, safetyErrors: msg.safetyErrors, safetyDiagnostics: msg.safetyDiagnostics, comments: msg.comments}, null, 2);
+  ast.textContent = msg.ast.join('\\n');
+  analysis.textContent = JSON.stringify(msg.analysis, null, 2);
+});
+</script>`;
+}
+
+function collectDocumentSymbols(document: vscode.TextDocument): vscode.DocumentSymbol[] {
+  const symbols: vscode.DocumentSymbol[] = [];
+  for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
+    const line = document.lineAt(lineIndex);
+    const text = line.text.trim();
+    const functionMatch = text.match(/^function\s+([A-Za-z_][A-Za-z0-9_]*)/);
+    const enumMatch = text.match(/^enum\s+([A-Za-z_][A-Za-z0-9_]*)/);
+    const macroMatch = text.match(/^#macro\s+([A-Za-z_][A-Za-z0-9_]*)/);
+    const match = functionMatch ?? enumMatch ?? macroMatch;
+    if (!match) continue;
+    const kind = functionMatch
+      ? vscode.SymbolKind.Function
+      : enumMatch
+        ? vscode.SymbolKind.Enum
+        : vscode.SymbolKind.Constant;
+    symbols.push(
+      new vscode.DocumentSymbol(
+        match[1],
+        functionMatch ? "function" : enumMatch ? "enum" : "macro",
+        kind,
+        line.range,
+        line.range,
+      ),
+    );
+  }
+  return symbols;
+}
+
+function getAnalysisOptions(document: vscode.TextDocument): { projectRules: GmlProjectRules } {
+  const config = vscode.workspace.getConfiguration("gmlFormatter", document.uri);
+  return {
+    projectRules: config.get("projectRules", {}),
+  };
+}
+
+async function showAnalysisReport(document: vscode.TextDocument): Promise<void> {
+  const report = await analyzeGmlSource(document.getText(), getAnalysisOptions(document));
+  const content = analysisMarkdown(document.fileName, report);
+  const analysisDocument = await vscode.workspace.openTextDocument({
+    language: "markdown",
+    content,
+  });
+  await vscode.window.showTextDocument(analysisDocument, { preview: true });
+}
+
+async function showExpressionExplanation(editor: vscode.TextEditor): Promise<void> {
+  const text = selectedOrLineText(editor);
+  const explanation = analyzeExpressionAtText(text);
+  const document = await vscode.workspace.openTextDocument({
+    language: "markdown",
+    content: [
+      "# GML Expression Explanation",
+      "",
+      "```gml",
+      explanation.expression,
+      "```",
+      "",
+      "## Shape",
+      ...explanation.shape.map((line) => `- ${line}`),
+      "",
+      "## Detected Patterns",
+      ...(explanation.detectedPatterns.length
+        ? explanation.detectedPatterns.map((line) => `- ${line}`)
+        : ["- None"]),
+      "",
+      "## Suggestions",
+      ...(explanation.suggestions.length
+        ? explanation.suggestions.map((line) => `- ${line}`)
+        : ["- None"]),
+    ].join("\n"),
+  });
+  await vscode.window.showTextDocument(document, { preview: true });
+}
+
+async function simplifySelectedExpression(editor: vscode.TextEditor): Promise<void> {
+  const range = editor.selection.isEmpty
+    ? editor.document.lineAt(editor.selection.active.line).range
+    : editor.selection;
+  const original = editor.document.getText(range);
+  const simplified = simplifyExpressionText(original);
+  if (simplified === original.trim()) {
+    await vscode.window.showInformationMessage("No safe simplification found for this expression.");
+    return;
+  }
+  await editor.edit((edit) => edit.replace(range, simplified));
+}
+
+function selectedOrLineText(editor: vscode.TextEditor): string {
+  return editor.selection.isEmpty
+    ? editor.document.lineAt(editor.selection.active.line).text.trim()
+    : editor.document.getText(editor.selection);
+}
+
+function createSmartCodeActions(
+  document: vscode.TextDocument,
+  range: vscode.Range,
+): vscode.CodeAction[] {
+  const actions: vscode.CodeAction[] = [];
+  const selected = document.getText(range).trim();
+  if (selected) {
+    const simplified = simplifyExpressionText(selected);
+    if (simplified !== selected) {
+      const action = new vscode.CodeAction(
+        "GML: Simplify expression",
+        vscode.CodeActionKind.RefactorRewrite,
+      );
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(document.uri, range, simplified);
+      action.edit = edit;
+      actions.push(action);
+    }
+  }
+
+  const wordRange = document.getWordRangeAtPosition(range.start, /-?\d+(?:\.\d+)?/);
+  if (wordRange) {
+    const number = document.getText(wordRange);
+    if (!["0", "1", "2", "-1"].includes(number)) {
+      const macroName = `VALUE_${number.replace(/^-/, "NEG_").replace(/\./g, "_")}`;
+      const action = new vscode.CodeAction(
+        `GML: Extract ${number} to #macro ${macroName}`,
+        vscode.CodeActionKind.RefactorRewrite,
+      );
+      const edit = new vscode.WorkspaceEdit();
+      edit.insert(document.uri, new vscode.Position(0, 0), `#macro ${macroName} ${number}\n`);
+      edit.replace(document.uri, wordRange, macroName);
+      action.edit = edit;
+      actions.push(action);
+    }
+  }
+  return actions;
+}
+
+async function openProjectMap(
+  context: vscode.ExtensionContext,
+  state: { index?: GmlProjectIndex; builtAt?: number },
+): Promise<void> {
+  const index = await ensureProjectIndex(state);
+  const panel = vscode.window.createWebviewPanel(
+    "gmlProjectMap",
+    "GameMaker Project Map",
+    vscode.ViewColumn.Beside,
+    { enableScripts: true },
+  );
+  panel.webview.html = projectMapHtml(index);
+  context.subscriptions.push(panel);
+}
+
+async function ensureProjectIndex(state: {
+  index?: GmlProjectIndex;
+  builtAt?: number;
+}): Promise<GmlProjectIndex> {
+  if (!state.index || !state.builtAt || Date.now() - state.builtAt > 30_000) {
+    state.index = await buildWorkspaceProjectIndex();
+    state.builtAt = Date.now();
+  }
+  return state.index;
+}
+
+async function buildWorkspaceProjectIndex(): Promise<GmlProjectIndex> {
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
+  const uris = await vscode.workspace.findFiles(
+    "**/*.{gml,yy,yyp}",
+    "{**/node_modules/**,**/.git/**}",
+  );
+  const files: GmlProjectFile[] = [];
+  for (const uri of uris) {
+    try {
+      files.push({
+        path: uri.fsPath,
+        content: Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("utf8"),
+      });
+    } catch {
+      // Ignore files that changed while indexing.
+    }
+  }
+  return buildGmlProjectIndex(root, files);
+}
+
+async function updateProjectDiagnostics(
+  index: GmlProjectIndex,
+  diagnostics: vscode.DiagnosticCollection,
+): Promise<void> {
+  const grouped = new Map<string, vscode.Diagnostic[]>();
+  for (const reference of index.unresolvedReferences) {
+    const list = grouped.get(reference.file) ?? [];
+    list.push(
+      new vscode.Diagnostic(
+        new vscode.Range(
+          Math.max(0, reference.line - 1),
+          Math.max(0, reference.column - 1),
+          Math.max(0, reference.line - 1),
+          Math.max(0, reference.column - 1 + reference.name.length),
+        ),
+        `Unresolved GameMaker resource reference: ${reference.name}`,
+        vscode.DiagnosticSeverity.Warning,
+      ),
+    );
+    grouped.set(reference.file, list);
+  }
+  diagnostics.clear();
+  for (const [file, list] of grouped) {
+    diagnostics.set(vscode.Uri.file(file), list);
+  }
+}
+
+function projectMapHtml(index: GmlProjectIndex): string {
+  const rows = index.resources
+    .map(
+      (resource) =>
+        `<tr><td>${escapeHtml(resource.type)}</td><td>${escapeHtml(resource.name)}</td><td>${escapeHtml(resource.file)}</td></tr>`,
+    )
+    .join("");
+  const unresolved = index.unresolvedReferences
+    .map(
+      (reference) =>
+        `<li>${escapeHtml(reference.name)} in ${escapeHtml(reference.file)}:${reference.line}</li>`,
+    )
+    .join("");
+  return `<!doctype html>
+<meta charset="utf-8">
+<style>
+body{font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;margin:16px;color:#1f2933}
+table{width:100%;border-collapse:collapse}
+td,th{border-bottom:1px solid #d8dee9;padding:6px 8px;text-align:left;font-size:12px}
+th{background:#f7f8fa}
+.summary{display:flex;gap:16px;margin:12px 0}
+.summary strong{display:block;font-size:18px}
+</style>
+<h1>GameMaker Project Map</h1>
+<div class="summary">
+  <span><strong>${index.resources.length}</strong>resources</span>
+  <span><strong>${index.symbols.length}</strong>symbols</span>
+  <span><strong>${index.resourceReferences.length}</strong>resource references</span>
+  <span><strong>${index.unresolvedReferences.length}</strong>unresolved</span>
+</div>
+${index.unresolvedReferences.length ? `<h2>Unresolved References</h2><ul>${unresolved}</ul>` : ""}
+<table><thead><tr><th>Kind</th><th>Name</th><th>Path</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function analysisMarkdown(fileName: string, report: GmlAnalysisReport): string {
+  return [
+    `# GML Analysis: ${fileName.split(/[\\/]/).pop() ?? fileName}`,
+    "",
+    `Confidence: **${report.confidence.level}**`,
+    ...report.confidence.reasons.map((reason) => `- ${reason}`),
+    "",
+    "## Metrics",
+    `- Lines: ${report.metrics.lineCount} total, ${report.metrics.codeLineCount} code, ${report.metrics.commentLineCount} with comments`,
+    `- Functions: ${report.metrics.functionCount}`,
+    `- Cyclomatic complexity: ${report.metrics.cyclomaticComplexity}`,
+    `- Max brace depth: ${report.metrics.maxBraceDepth}`,
+    "",
+    "## Findings",
+    ...(report.findings.length
+      ? report.findings.map(
+          (finding) =>
+            `- ${finding.severity.toUpperCase()} ${finding.code} ${finding.line}:${finding.column} ${finding.message}`,
+        )
+      : ["- None"]),
+    "",
+    "## TODO / Notes",
+    ...(report.todoComments.length
+      ? report.todoComments.map((comment) => `- ${comment.tag} ${comment.line}: ${comment.text}`)
+      : ["- None"]),
+    "",
+    "## State Machines",
+    ...(report.stateMachines.length
+      ? report.stateMachines.map(
+          (machine) =>
+            `- ${machine.variable} at line ${machine.line}: ${machine.cases.length} case(s), ${machine.warnings.length} warning(s)`,
+        )
+      : ["- None"]),
+    "",
+    "## Dialogue",
+    ...(report.dialogueCases.length
+      ? report.dialogueCases.map(
+          (dialogue) =>
+            `- ${dialogue.room ?? "unknown"} / txt_num ${dialogue.txtNum}: ${dialogue.warnings.length ? dialogue.warnings.join("; ") : "ok"}`,
+        )
+      : ["- None"]),
+    "",
+    "## Magic Numbers",
+    ...report.magicNumbers
+      .slice(0, 20)
+      .map((number) => `- ${number.value}: ${number.count} line(s) (${number.lines.join(", ")})`),
+    "",
+    "## Suspicious Names",
+    ...(report.suspiciousNames.length
+      ? report.suspiciousNames.map(
+          (name) => `- ${name.name} -> ${name.suggestion} (${name.lines.join(", ")})`,
+        )
+      : ["- None"]),
+    "",
+    "## Constant Expressions",
+    ...(report.constantExpressions.length
+      ? report.constantExpressions.map(
+          (expression) => `- ${expression.line}: ${expression.suggestion}`,
+        )
+      : ["- None"]),
+    "",
+    "## Repeated Expressions",
+    ...(report.repeatedExpressions.length
+      ? report.repeatedExpressions.map(
+          (expression) => `- ${expression.expression}: ${expression.suggestion}`,
+        )
+      : ["- None"]),
+    "",
+    "## Asset References",
+    ...(report.assetReferences.length
+      ? report.assetReferences
+          .slice(0, 80)
+          .map(
+            (reference) =>
+              `- ${reference.kind} ${reference.name} at line ${reference.line} (${reference.context})`,
+          )
+      : ["- None"]),
+    "",
+    "## Scene Notes",
+    report.sceneNotesMarkdown,
+  ].join("\n");
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function dialogueCsv(report: GmlAnalysisReport): string {
+  const rows = [
+    [
+      "room",
+      "txt_num",
+      "line",
+      "len",
+      "text_count",
+      "face_count",
+      "choice_count",
+      "choice_target_count",
+      "missing_languages",
+      "warnings",
+    ],
+  ];
+  for (const dialogue of report.dialogueCases) {
+    rows.push([
+      dialogue.room ?? "",
+      dialogue.txtNum,
+      String(dialogue.line),
+      dialogue.len === undefined ? "" : String(dialogue.len),
+      dialogue.textCount === undefined ? "" : String(dialogue.textCount),
+      dialogue.faceCount === undefined ? "" : String(dialogue.faceCount),
+      dialogue.choiceCount === undefined ? "" : String(dialogue.choiceCount),
+      dialogue.choiceTargetCount === undefined ? "" : String(dialogue.choiceTargetCount),
+      dialogue.missingLanguages.join("|"),
+      dialogue.warnings.join(" | "),
+    ]);
+  }
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n") + "\n";
+}
+
+function csvCell(value: string): string {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}

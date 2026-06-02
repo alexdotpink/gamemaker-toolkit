@@ -1,0 +1,355 @@
+{
+  "name": "gamemaker-toolkit",
+  "displayName": "GameMaker Toolkit",
+  "description": "Formatter, analyzer, project index, and language tools for GameMaker Language (.gml) in VS Code.",
+  "version": "0.9.0",
+  "publisher": "alexdotpink",
+  "author": "alexdotpink",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alexdotpink/gamemaker-toolkit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alexdotpink/gamemaker-toolkit/issues"
+  },
+  "homepage": "https://github.com/alexdotpink/gamemaker-toolkit",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Formatters",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "gml",
+    "gamemaker",
+    "gamemaker-studio",
+    "game-development",
+    "language-tools",
+    "static-analysis",
+    "formatter",
+    "beautifier"
+  ],
+  "activationEvents": [
+    "onLanguage:gml",
+    "onLanguage:gamemaker",
+    "onLanguage:gamemaker-language",
+    "onLanguage:gml-gamemaker",
+    "onCommand:gmlFormatter.formatDocument",
+    "onCommand:gmlFormatter.formatWithLexicalFallback",
+    "onCommand:gmlFormatter.showDebugInfo",
+    "onCommand:gmlFormatter.configureDefaultFormatter",
+    "onCommand:gmlFormatter.diagnoseSetup",
+    "onCommand:gmlFormatter.explainSkippedFormat",
+    "onCommand:gmlFormatter.formatAndShowDiff",
+    "onCommand:gmlFormatter.workspaceDryRun",
+    "onCommand:gmlFormatter.openPlayground",
+    "onCommand:gmlFormatter.analyzeCurrentFile",
+    "onCommand:gmlFormatter.explainExpression",
+    "onCommand:gmlFormatter.simplifyExpression",
+    "onCommand:gmlFormatter.generateSceneNotes",
+    "onCommand:gmlFormatter.analyzeStateMachine",
+    "onCommand:gmlFormatter.openProjectMap",
+    "onCommand:gmlFormatter.rebuildProjectIndex",
+    "onCommand:gmlFormatter.goToResource",
+    "onCommand:gmlFormatter.exportDialogueCsv",
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "gml",
+        "aliases": [
+          "GameMaker Language",
+          "GML"
+        ],
+        "extensions": [
+          ".gml"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "gml",
+        "scopeName": "source.gml",
+        "path": "./syntaxes/gml.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "gml",
+        "path": "./snippets/gml.code-snippets"
+      }
+    ],
+    "commands": [
+      {
+        "command": "gmlFormatter.formatDocument",
+        "title": "GML: Format Document",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.formatWithLexicalFallback",
+        "title": "GML: Format With Lexical Fallback",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.showDebugInfo",
+        "title": "GML: Show Formatter Debug Info",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.configureDefaultFormatter",
+        "title": "GML: Make This The Default Formatter",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.diagnoseSetup",
+        "title": "GML: Diagnose Formatter Setup",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.explainSkippedFormat",
+        "title": "GML: Explain Why This File Was Not Formatted",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.formatAndShowDiff",
+        "title": "GML: Format and Show Diff",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.workspaceDryRun",
+        "title": "GML: Format Workspace Dry Run",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.openPlayground",
+        "title": "GML: Open Formatter Playground",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.analyzeCurrentFile",
+        "title": "GML: Analyze Current File",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.explainExpression",
+        "title": "GML: Explain Expression Under Cursor",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.simplifyExpression",
+        "title": "GML: Simplify Selected Expression",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.generateSceneNotes",
+        "title": "GML: Generate Scene Notes",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.analyzeStateMachine",
+        "title": "GML: Analyze State Machine",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.openProjectMap",
+        "title": "GML: Open Project Map",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.rebuildProjectIndex",
+        "title": "GML: Rebuild Project Index",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.goToResource",
+        "title": "GML: Go To Resource",
+        "category": "GML"
+      },
+      {
+        "command": "gmlFormatter.exportDialogueCsv",
+        "title": "GML: Export Dialogue CSV",
+        "category": "GML"
+      }
+    ],
+    "configurationDefaults": {
+      "[gml]": {
+        "editor.defaultFormatter": "alexdotpink.gamemaker-toolkit"
+      },
+      "[gamemaker]": {
+        "editor.defaultFormatter": "alexdotpink.gamemaker-toolkit"
+      },
+      "[gamemaker-language]": {
+        "editor.defaultFormatter": "alexdotpink.gamemaker-toolkit"
+      },
+      "[gml-gamemaker]": {
+        "editor.defaultFormatter": "alexdotpink.gamemaker-toolkit"
+      }
+    },
+    "configuration": {
+      "title": "GameMaker Toolkit",
+      "properties": {
+        "gmlFormatter.indentSize": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Number of spaces used for indentation when tabs are disabled."
+        },
+        "gmlFormatter.useTabs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use tabs for indentation instead of spaces."
+        },
+        "gmlFormatter.printWidth": {
+          "type": "number",
+          "default": 100,
+          "minimum": 40,
+          "maximum": 200,
+          "description": "Preferred maximum line width before multiline expression layout is used."
+        },
+        "gmlFormatter.trailingCommas": {
+          "type": "boolean",
+          "default": false,
+          "description": "Add trailing commas in multiline calls, arrays, and structs."
+        },
+        "gmlFormatter.multilineFunctionCalls": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ],
+          "description": "Control multiline formatting for function calls and delimited expression lists."
+        },
+        "gmlFormatter.style": {
+          "type": "string",
+          "default": "opinionated",
+          "enum": [
+            "opinionated",
+            "minimal",
+            "preserve",
+            "gameMakerStudio"
+          ],
+          "description": "Formatter style preset."
+        },
+        "gmlFormatter.safety": {
+          "type": "string",
+          "default": "ast-and-trivia",
+          "enum": [
+            "ast-and-trivia",
+            "ast-equivalence",
+            "trivia-strict",
+            "parse-only",
+            "off"
+          ],
+          "description": "Safety gate used after formatting. The default reparses, compares the formatter-owned AST, and verifies comment/string trivia preservation."
+        },
+        "gmlFormatter.smartSimplify": {
+          "type": "string",
+          "default": "suggest",
+          "enum": [
+            "off",
+            "safe",
+            "suggest",
+            "aggressive"
+          ],
+          "description": "Controls smart expression simplification features. Formatting never applies aggressive simplifications automatically."
+        },
+        "gmlFormatter.projectRules": {
+          "type": "object",
+          "default": {
+            "stateVariables": [
+              "fase",
+              "phase",
+              "state"
+            ],
+            "languageVariables": [
+              "global.LAN"
+            ],
+            "requiredLanguages": [
+              "ITA",
+              "ENG"
+            ],
+            "dialogueObjects": [
+              "dialoguebarUI"
+            ]
+          },
+          "description": "Project-specific analysis rules for state machines, dialogue languages, and dialogue objects."
+        },
+        "gmlFormatter.mode": {
+          "type": "string",
+          "default": "file",
+          "enum": [
+            "file",
+            "snippet",
+            "expression",
+            "macro"
+          ],
+          "description": "Formatting mode hint used by formatter commands."
+        },
+        "gmlFormatter.trimTrailingWhitespace": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trim trailing whitespace while formatting."
+        },
+        "gmlFormatter.maxBlankLines": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 5,
+          "description": "Maximum number of consecutive blank lines to keep."
+        },
+        "gmlFormatter.readableSpacing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Insert readable blank lines between adjacent top-level blocks, functions, switch statements, and other control-flow sections."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p . && esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js && esbuild src/server.ts --bundle --platform=node --format=cjs --outfile=dist/server.js",
+    "test": "pnpm build && node scripts/run-tests.mjs",
+    "test:extension": "pnpm test",
+    "fixtures:test": "pnpm build && node scripts/formatter-tools.mjs fixtures:test",
+    "fixtures:update": "pnpm build && node scripts/formatter-tools.mjs fixtures:update",
+    "corpus": "pnpm build && node scripts/formatter-tools.mjs corpus",
+    "check": "pnpm build && node scripts/formatter-tools.mjs check",
+    "write": "pnpm build && node scripts/formatter-tools.mjs write",
+    "fuzz": "pnpm build && node scripts/formatter-tools.mjs fuzz",
+    "analyze": "pnpm build && node scripts/formatter-tools.mjs analyze",
+    "project-index": "pnpm build && node scripts/formatter-tools.mjs project-index",
+    "dialogue-export": "pnpm build && node scripts/formatter-tools.mjs dialogue-export",
+    "snapshot:create": "pnpm build && node scripts/formatter-tools.mjs snapshot:create",
+    "snapshot:test": "pnpm build && node scripts/formatter-tools.mjs snapshot:test",
+    "snapshot:update": "pnpm build && node scripts/formatter-tools.mjs snapshot:update",
+    "debug-format": "pnpm build && node scripts/formatter-tools.mjs debug-format",
+    "playground": "pnpm build && node scripts/formatter-tools.mjs playground",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "package:check": "pnpm format:check && pnpm test && pnpm fixtures:test && pnpm fuzz && pnpm package",
+    "watch": "tsc -watch -p .",
+    "package": "pnpm build && vsce package --allow-missing-repository --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.8",
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "^2.32.0",
+    "esbuild": "^0.28.0",
+    "prettier": "^3.8.3",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "@bscotch/gml-parser": "^1.17.2",
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12"
+  }
+}

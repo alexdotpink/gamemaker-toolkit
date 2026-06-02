@@ -1,0 +1,94 @@
+{
+  "scopeName": "source.gml",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#preprocessor" },
+    { "include": "#keywords" },
+    { "include": "#constants" },
+    { "include": "#numbers" },
+    { "include": "#functions" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.gml", "begin": "//", "end": "$" },
+        { "name": "comment.block.gml", "begin": "/\\*", "end": "\\*/" }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.gml",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [{ "name": "constant.character.escape.gml", "match": "\\\\." }]
+        },
+        {
+          "name": "string.quoted.single.gml",
+          "begin": "'",
+          "end": "'",
+          "patterns": [{ "name": "constant.character.escape.gml", "match": "\\\\." }]
+        },
+        {
+          "name": "string.quoted.backtick.gml",
+          "begin": "`",
+          "end": "`",
+          "patterns": [{ "name": "constant.character.escape.gml", "match": "\\\\." }]
+        }
+      ]
+    },
+    "preprocessor": {
+      "patterns": [
+        { "name": "meta.preprocessor.gml", "match": "^\\s*#\\s*(?:macro|region|endregion)\\b.*$" }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.gml",
+          "match": "\\b(?:if|else|switch|case|default|break|continue|exit|return|for|while|do|until|repeat|with|try|catch|finally)\\b"
+        },
+        {
+          "name": "storage.type.gml",
+          "match": "\\b(?:var|globalvar|static|function|constructor|enum)\\b"
+        },
+        {
+          "name": "keyword.operator.word.gml",
+          "match": "\\b(?:and|or|xor|not|div|mod|new|delete)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.gml",
+          "match": "\\b(?:true|false|undefined|noone|self|other|all|global|local|NaN|infinity|pi)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.gml",
+          "match": "\\b\\$[0-9A-Fa-f]+\\b|\\b0x[0-9A-Fa-f]+\\b"
+        },
+        { "name": "constant.numeric.gml", "match": "\\b\\d+(?:\\.\\d+)?\\b" }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        { "name": "entity.name.function.gml", "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()" }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.gml",
+          "match": "\\?\\?|==|!=|<=|>=|<<|>>|[-+*/%=&|^!<>?:.]|\\+=|-=|\\*=|/=|%="
+        }
+      ]
+    }
+  }
+}
